@@ -1,0 +1,3364 @@
+<!DOCTYPE html>
+<html lang="ru" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>BUNKER ONLINE — Выживание после катастрофы</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            bunker: {
+              bg: '#0b0f17',
+              surface: '#111824',
+              card: '#182232',
+              border: '#263348',
+              amber: '#f59e0b',
+              danger: '#ef4444',
+              safe: '#10b981',
+              muted: '#8b9bb4',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body {
+      background-color: #0b0f17;
+      background-image: radial-gradient(circle at 50% 0%, rgba(245, 158, 11, 0.06) 0%, transparent 55%);
+      color: #e6edf3;
+      font-family: 'Inter', system-ui, sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .hazard-stripe {
+      background: repeating-linear-gradient(
+        -45deg,
+        rgba(245, 158, 11, 0.12),
+        rgba(245, 158, 11, 0.12) 10px,
+        rgba(11, 15, 23, 0.5) 10px,
+        rgba(11, 15, 23, 0.5) 20px
+      );
+    }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #0b0f17; }
+    ::-webkit-scrollbar-thumb { background: #263348; border-radius: 3px; }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col antialiased selection:bg-amber-500/30 selection:text-amber-200">
+
+  <!-- Toast Container -->
+  <div id="toast-container" class="fixed top-4 right-4 z-50 flex flex-col gap-2 max-w-xs w-full pointer-events-none px-4 sm:px-0"></div>
+
+  <!-- Modal Container -->
+  <div id="modal-overlay" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden items-center justify-center p-4">
+    <div id="modal-content" class="bg-bunker-surface border border-bunker-border rounded-2xl max-w-lg w-full p-5 shadow-2xl max-h-[90vh] overflow-y-auto"></div>
+  </div>
+
+  <!-- Top Navbar -->
+  <header class="border-b border-bunker-border bg-bunker-surface/85 backdrop-blur-md sticky top-0 z-40">
+    <div id="navbar" class="max-w-7xl mx-auto px-3 sm:px-6 h-14 flex items-center justify-between gap-2"></div>
+  </header>
+
+  <!-- Main App Root -->
+  <main id="app" class="flex-1 flex flex-col max-w-7xl w-full mx-auto px-3 sm:px-6 py-4 sm:py-6"></main>
+
+  <script>
+    // =========================================================================
+    // BASE DECKS (Остроумные и разнообразные колоды + поддержка личных паков)
+    // =========================================================================
+    const PROF_EXP = ["Новичок", "Стажер", "Любитель", "Опытный", "Профессионал", "Эксперт"];
+    const HOBBY_EXP = ["Новичок", "Любитель", "Опытный", "Продвинутый", "Мастер"];
+    const HEALTH_DEG = ["Легкая", "Средняя", "Тяжелая", "Критическая"];
+    const BODY_ZONES = ["Лицо", "Левая рука", "Правая рука", "Ноги", "Спина", "Грудная клетка", "Кисти рук", "Всё тело"];
+    const ZONE_DISEASES = ["Проказа", "Ожоги", "Экзема", "Артрит", "Некроз тканей", "Шрамы и травма", "Обморожение", "Каменная болезнь"];
+    const BODY_TYPES = ["Хрупкое", "Худое", "Атлетическое", "Крепкое", "Полное", "Крупное"];
+
+    const DECKS = {
+      catastrophes: [
+        {
+          title: "Ядерная зима «Пепел-9»",
+          desc: "Серия ударов подняла в стратосферу миллионы тонн сажи. Температура на поверхности упала до -45°C, солнечный свет почти не пробивается сквозь облака.",
+          duration: "2 года и 3 месяца",
+          survivors: "4% населения"
+        },
+        {
+          title: "Спора «Кордицепс-М»",
+          desc: "Мутировавший грибок распространился по атмосфере за 3 недели. Выйти наружу без герметичного фильтра невозможно.",
+          duration: "1 год и 6 месяцев",
+          survivors: "7% населения"
+        },
+        {
+          title: "Солнечная супервспышка «Гелиос»",
+          desc: "Мощнейший выброс сжег всю незащищенную электронику планеты и ослабил озоновый слой. Днем поверхность выжигает ультрафиолет.",
+          duration: "3 года",
+          survivors: "11% населения"
+        },
+        {
+          title: "Пробуждение супервулкана",
+          desc: "Извержение кальдеры вызвало глобальные землетрясения, кислотные дожди и вулканическую ночь. Воздух насыщен сернистым газом.",
+          duration: "2 года и 6 месяцев",
+          survivors: "6% населения"
+        },
+        {
+          title: "Сингулярность «Омега»",
+          desc: "Автономные военные ИИ и рои дронов вышли из-под контроля, отслеживая любые тепловые сигнатуры на поверхности.",
+          duration: "1 год и 2 месяца",
+          survivors: "9% населения"
+        },
+        {
+          title: "Восстание мутировавших голубей",
+          desc: "Неудачный эксперимент по ускорению эволюции вырвался из лаборатории. Стаи гигантских агрессивных птиц захватили мегаполисы.",
+          duration: "1 год и 4 месяца",
+          survivors: "14% населения"
+        }
+      ],
+      bunkerSpecs: {
+        areas: ["48 м²", "68 м²", "94 м²", "118 м²", "156 м²", "210 м²"],
+        locations: [
+          "Горы Урала, скальный массив",
+          "Под заброшенной городской больницей",
+          "Промзона на окраине мегаполиса",
+          "Глухая тайга, в 80 км от ближайшего поселка",
+          "Подземный уровень научного института", "Среди заброшенных шахт (много насекомых)", "В заповеднике (проблемы с водоснабжением)", "Под задним двором старинного замка", "Около старого кладбища"
+        ],
+        history: [
+          "Построен 19 лет назад как резервный узел связи. Имеется затхлый запах.",
+          "Частное убежище миллионера, возведено 4 года назад по высшему классу.",
+          "Законсервированный объект времен Холодной войны, часть систем изношена.",
+          "Переоборудован из старого винного погреба — отличная акустика, но сыро."
+        ],
+        rooms: [
+          "Общая казарма на всех и отдельная кухня-столовая",
+          "Индивидуальные жилые капсулы (2×2 м) и общий холл",
+          "Две смежные спальни, технический отсек и общий санузел",
+          "Просторная кают-компания, но нет отдельного медотсека", "Две комнаты, которые делятся на мужскую и женскую", "Просторная терраса с видом на внутреннюю часть скалы", "Спальня, наполовину заполненная пауками"
+        ],
+        food: [
+          "На 1 год и 5 месяцев (консервы, крупы и сухпайки)",
+          "На весь срок (сублиматы + система гидропоники)",
+          "На 70% срока — придется экономить или делать вылазки",
+          "Склад деликатесов, 300 кг макарон и 50 банок шпрот", "На 3 года и 3 месяца, но только веганские продукты", "Ведро рыбьих глаз, сухари и 20 литров рассола"
+        ],
+        features: [
+          "Автономный ядерный микрореактор",
+          "Хирургический стол и запас перевязочных материалов",
+          "Мастерская со сварочным аппаратом и токарным станком",
+          "Артезианская скважина с системой глубокой фильтрации",
+          "Библиотека технических и медицинских справочников",
+          "Сломанная система вентиляции (требует регулярного ремонта)",
+          "Тренажерный зал и проектор с архивом фильмов",
+          "Теплица с искусственным ультрафиолетом",
+          "Протечка грунтовых вод в дальнем отсеке",
+          "Джакузи (требует много воды, но снимает стресс)",
+          "Караоке-система с двумя микрофонами", "5 спреев от вредителей и биотуалет", "Незваный гость в углу (занимает 1 место, если не прогнать)", "Чучело, огромный котёл и пулемёт с 500 патронами", "Череп колдуна на полке", "Тренажёрный зал, радио и стухшая селёдка", "Неисправная система жизнеобеспечения"
+        ]
+      },
+      genders: ["Мужчина", "Женщина"],
+      characterTraits: [
+        "Добрый и эмпатичный", "Расчетливый прагматик", "Вспыльчивый, но отходчивый",
+        "Хладнокровный лидер", "Параноик (никому не доверяет)", "Прирожденный дипломат",
+        "Циничный реалист", "Самоотверженный альтруист", "Упрямый перфекционист",
+        "Трусливый в критический момент", "Харизматичный манипулятор", "Спокойный наблюдатель",
+        "Токсичный душнила (поправляет всех)", "Патологический лжец", "Конспиролог-плоскоземельщик",
+        "Любитель сплетен и интриг", "Вечный нытик-ипохондрик", "Клептоман (прячет мелочи)",
+        "Нарцисс (уверен, что лучше всех)", "Синдром вахтёра", "Наивный оптимист", "Считает себя главным героем аниме", "Кричит на микроволновку", "Хлопает при посадке самолёта", "Вечно говорит: а я же говорил!", "Смеётся в самые неловкие моменты", "Думает, что он в Битве экстрасенсов", "Слабоумие и отвага", "Психопат с милой улыбкой", "Мания величия", "Мстительный злопамятник", "Неконтролируемая честность", "Хладнокровный социопат", "Беспринципный карьерист", "Любитель чёрного юмора", "Садист", "Дисциплинированный (выполняет любой приказ)", "Жадный (во всём ищет выгоду)", "Слабовольный", "Безжалостный", "Мизантроп (ненавидит всех)", "Крайне инициативный", "Ксенофоб", "ЧСВ (высокомерный)", "Авторитетный", "Рассудительный", "Расист"
+      ],
+      professions: [
+        "Военный хирург", "Агроном-селекционер", "Инженер-энергетик", "Психотерапевт",
+        "Сантехник-универсал", "Механик-дизелист", "Микробиолог", "Пожарный-спасатель",
+        "Программист-кибербезопасник", "Повар-технолог", "Ветеринар", "Химик-технолог",
+        "Строитель-монтажник", "Школьный учитель", "Юрист-медиатор", "Фитнес-тренер",
+        "Популярный блогер", "Архитектор", "Стоматолог", "Электрик высокого разряда",
+        "Фармацевт", "Охотник-егерь", "Геолог", "Музыкант-композитор",
+        "Таролог-экстрасенс", "Крипто-инфоцыган", "Дегустатор корма для животных",
+        "Диджей сельской дискотеки", "Клоун-аниматор", "Тестировщик матрасов",
+        "Стример на Twitch", "Барбер-стилист", "Таксист-философ", "Иллюзионист", "Дегустатор пельменей", "Оператор шлагбаума", "Сомелье доширака", "Переворачиватель пингвинов", "Разработчик на 1С", "Стример с 12 зрителями", "Секретный агент из ЖЭКа", "Профессиональный стоятель в очередях", "Маньяк-перфекционист", "Тайный ассасин", "Карманник-виртуоз", "Подпольный хирург", "Бывший зэк-авторитет", "Чёрный риэлтор", "Гадалка-шарлатанка", "Патологоанатом", "Королевский палач", "Коллектор", "Взломщик сейфов", "Уборщик мест преступлений", "Браконьер", "Охотник на вампиров", "Сектант-проповедник", "Кукловод", "Шарлатан", "Пират", "Вампир", "Документовед", "Нотариус", "Ортопед", "Артист-мимик", "Парамедик", "Доярка", "Сотрудник салона связи (может добавить через ведущего любой товар из салона связи)", "Спортсмен", "Подолог"
+      ],
+      healthConditions: [
+        "Полностью здоров", "Полностью здоров", "Бронхиальная астма",
+        "Близорукость -4", "Сахарный диабет 1 типа", "Аллергия на пыль и плесень",
+        "Хроническая мигрень", "Проказа", "Ожоги", "Экзема", "Травма позвоночника", "Протез (левая голень)", "Порок сердца",
+        "Язва желудка", "Глухота на одно ухо", "Повышенное давление",
+        "Сильный иммунитет к инфекциям", "Лунатизм", "Зависимость от энергетиков",
+        "Нарколепсия (засыпает на ходу)", "Дальтонизм", "Хроническая бессонница", "Раздвоение личности", "Амнезия (забывает всё через 5 минут)", "Отсутствует чувство боли", "Паранойя (слышит шаги в вентиляции)", "Нервный тик", "Аллергия на солнечный свет", "Глухонемой", "Слепой на один глаз", "Каменная болезнь", "Волчья слюна (бешенство)", "Гепатит", "Лихорадка", "Тахикардия", "Синусит", "Жуткая неизвестная болезнь", "Холера", "Гипоксия", "Кровотечение", "Дальнозоркость", "Маршевая стопа"
+      ],
+      hobbies: [
+        "Выживание в дикой природе", "Ремонт мелкой электроники", "Гидропонное садоводство",
+        "Игра на акустической гитаре", "Стрельба из лука и арбалета", "Кулинария из минимума продуктов",
+        "Шитье и ремонт одежды", "Шахматы и тактические игры", "Первая помощь и травничество",
+        "Слесарное дело", "Йога и медитация", "Разведение пчел",
+        "Хоббихорсинг", "Пранки по телефону", "Споры в комментариях до утра",
+        "Уличная магия и фокусы", "Коллекционирование крышек", "Астрология и натальные карты",
+        "Стендап-импровизация", "Спидкубинг", "Спортивный сон на скорость", "Битбокс на кастрюлях", "Сборка мебели без инструкции", "Поиск смысла жизни в мемах", "Танцы с пылесосом", "Комментирование чужой готовки", "Ночные прогулки по кладбищам", "Дрессировка крыс", "Точение ножей перед сном", "Взлом соседского Wi-Fi", "Наблюдение в бинокль за окнами", "Ритуалы при свечах", "Чтение уголовного кодекса"
+      ],
+      phobias: [
+        "Клаустрофобия (страх замкнутых пространств)", "Арахнофобия (страх пауков)",
+        "Никтофобия (панический страх темноты)", "Гемофобия (боязнь вида крови)",
+        "Мизофобия (страх грязи и заражения)", "Социофобия (трудно работать в группе)",
+        "Пирофобия (страх огня)", "Фобий не выявлено (стальные нервы)",
+        "Аутофобия (страх остаться в одиночестве)", "Танатофобия (страх смерти)",
+        "Коулрофобия (страх клоунов)", "Эйсоптрофобия (боязнь зеркал)",
+        "Номофобия (паника без смартфона)", "Эргофобия (панический страх работы)", "Боязнь пустой кружки", "Страх, что закончится майонез", "Боязнь понедельников", "Страх, что все смотрят, как он ест", "Ужасно боится тыкв", "Боязнь кусать других людей", "Лепрофобия (страх проказы)", "Страх воровства", "Страх дома", "Боязнь иностранных врачей", "Страх наводнений", "Боязнь тупых людей", "Страх кукол", "Страх криков", "Страх палочек для еды", "Страх прикасаться к людям"
+      ],
+      backpack: [
+        "Полевая аптечка (бинты, жгут, антисептик)", "Набор семян овощей (50 сортов)",
+        "Швейцарский мультитул и отвертки", "Портативный повербанк с солнечной зарядкой",
+        "Комплект из 2 раций на 10 км", "Угольные фильтры для воды (6 шт.)",
+        "Фляга медицинского спирта (1 л)", "Справочник по первой помощи",
+        "Охотничий нож и огниво", "Упаковка антибиотиков широкого спектра",
+        "Респиратор с 3 запасными фильтрами", "Колода карт и кубики",
+        "10 пачек лапши быстрого приготовления", "Набор отмычек для замков",
+        "Карманный словарь редких языков", "Мощный налобный фонарь", "Пакет с пакетами", "Набор наклеек с котиками (500 шт.)", "Фальшивые усы для маскировки", "Камень, похожий на картошку", "3 пустых зажигалки", "Свисток от медведей (не работает на голубей)", "Верёвка, скотч и чёрные пакеты", "Блокнот со списком обидчиков", "Мешок неизвестных таблеток", "Старый револьвер (без патронов)", "Записка с чужим признанием", "Бейсбольная бита", "Три пары жестяных носков", "Шерстяной платок", "Вакцина от чумы", "Спасательный жилет", "Игральные карты", "Паяльник", "Поздравительная открытка", "10 мотков изоленты", "Ящик копчёной колбасы", "Цветочный горшок", "Книга по выживанию"
+      ],
+      bigLuggage: [
+        "Бензиновый электрогенератор (3 кВт)",
+        "Горный велосипед с ремкомплектом",
+        "Ящик армейской тушенки (24 банки)",
+        "Инверторный сварочный аппарат и электроды",
+        "Ящик плотницких и слесарных инструментов",
+        "Надувная лодка с веслами и насосом",
+        "Переносной термоконтейнер с вакцинами",
+        "Бензопила и канистра топлива (20 л)",
+        "Домашняя гидропонная мини-ферма с LED-лампами",
+        "Металлический сейф с документами и золотом",
+        "Складная солнечная панель (200 Вт) и аккумулятор",
+        "Клетка с двумя енотами",
+        "Коробка с 200 рулонами туалетной бумаги",
+        "15-килограммовый мешок корма для животных",
+        "Диджейский пульт с мощной колонкой",
+        "Раскладной мангал и мешок берёзового угля",
+        "Тележка из супермаркета",
+        "Массажное кресло (не работает без сети)", "Надувной динозавр в полный рост", "Портрет себя любимого 2×2 метра", "Мешок макарон Красная цена (25 кг)", "Бочка малосольных огурцов", "Самокат без одного колеса", "Сейф без ключа (внутри что-то стучит)", "Бочка с надписью «Не открывать»", "Манекен по имени Игорь", "Разборная железная клетка", "Ящик петард и фейерверков", "Живая корова (4 года)", "Могильная плита", "10 кг макарон", "Геймерское кресло DXRacer", "Немецкая овчарка", "Лестница-стремянка", "10 литров бензина", "Спальный мешок", "Деревянная удочка", "Переносная палатка", "Пляжный зонтик", "Горные лыжи", "Граната"
+      ],
+      facts: [
+        "Свободно говорит на 4 языках", "Служил в спасательном отряде МЧС",
+        "Мастер спорта по рукопашному бою", "Умеет собирать фильтры воды из подручных средств",
+        "В прошлом судим за финансовые махинации", "Универсальный донор крови (I группа, Rh-)",
+        "Умеет варить мыло и антисептики", "Склонен к панике в критических ситуациях",
+        "Знает устройство систем жизнеобеспечения", "Отлично ориентируется в полной темноте",
+        "Тайно прячет 2 кг шоколада", "Имеет доступ к аварийным картам региона",
+        "Выиграл миллион в лотерею и потратил за одну ночь",
+        "Не умеет читать вслух и путает лево с право",
+        "Знает секретный рецепт идеальной шаурмы",
+        "Храпит как работающий перфоратор",
+        "Был забанен в трёх бункерах за воровство тушёнки", "Дважды выигрывал в Поле чудес, но забыл призы", "В детстве потерялся в ИКЕА и жил там 3 дня", "Знает наизусть все серии Смешариков", "Забыл выключить утюг перед апокалипсисом", "Спит с открытыми глазами", "В розыске в трёх странах", "Умеет бесшумно вскрывать любые двери", "Сбежал из-под стражи через вентиляцию", "Разговаривает со своим отражением", "Знает, где спрятаны все заначки города", "Умеет находить съедобных насекомых", "Прошёл курс ораторского мастерства", "Знает, где логово агрессивных сатиров", "Построил дом на даче", "Лауреат премии Тьюринга", "Прошёл специальную военную подготовку", "Знает, где ближайшие нефтяные вышки", "Был правой рукой короля", "Стал причиной апокалипсиса (случайно)", "Не умеет читать, зато отлично считает", "Смотрит аниме и знает японский", "Утверждает, что умеет призывать нечисть", "На самом деле киборг (нет крови)", "Любит издеваться над слабыми", "Родители работали учёными-химиками"
+      ],
+      specialCards: [
+        { id: "heal", title: "Экстренная терапия", desc: "Полностью излечивает ваше здоровье (меняет статус на «Полностью здоров»).", actionType: "self_heal" },
+        { id: "reroll_prof", title: "Смена квалификации", desc: "Заменяет вашу профессию на новую случайную из колоды.", actionType: "reroll_prof" },
+        { id: "reroll_health", title: "Медосмотр", desc: "Заменяет вашу карту здоровья на случайную новую.", actionType: "reroll_health" },
+        { id: "double_vote", title: "Весомый аргумент", desc: "Ваш голос на следующем голосовании считается за два.", actionType: "double_vote" },
+        { id: "immunity", title: "Железное алиби", desc: "Дает иммунитет от изгнания в текущем раунде голосования.", actionType: "immunity" },
+        { id: "force_reveal", title: "Допрос с пристрастием", desc: "Позволяет раскрыть любую закрытую карту выбранного игрока.", actionType: "force_reveal" },
+        { id: "steal_luggage", title: "Конфискация большого багажа", desc: "Вы меняетесь Большим багажом с выбранным игроком.", actionType: "swap_big_luggage" },
+        { id: "add_bunker_slot", title: "Расширение отсека", desc: "Увеличивает вместимость бункера на +1 место (единожды за игру).", actionType: "add_slot" },
+        { id: "custom_item", title: "Контрабанда (Свой предмет)", desc: "Позволяет добавить любой придуманный вами предмет в Рюкзак или Большой багаж.", actionType: "add_custom_item" },
+        { id: "swap_prof", title: "Украденный диплом", desc: "Вы меняетесь профессиями с выбранным игроком!", actionType: "swap_prof" },
+        { id: "swap_health", title: "Пересадка судьбы", desc: "Вы меняетесь картой Здоровья с выбранным игроком!", actionType: "swap_health" },
+        { id: "heal_other", title: "Спасительная вакцина", desc: "Полностью излечивает выбранного вами игрока.", actionType: "heal_other" },
+        { id: "infect_other", title: "Заразный чих", desc: "Выбранный игрок получает случайную новую болезнь.", actionType: "infect_other" },
+        { id: "shrink_slot", title: "Аварийная перегородка", desc: "Уменьшает вместимость бункера на -1 место (минимум до 1).", actionType: "shrink_slot" },
+        { id: "reveal_all_phobias", title: "Групповая паника", desc: "Все живые игроки немедленно открывают свою карту «Фобия / Страх»!", actionType: "reveal_all_phobias" },
+        { id: "strip_immunity", title: "Компромат", desc: "Снимает иммунитет с выбранного игрока и открывает его случайную карту.", actionType: "strip_immunity" },
+        { id: "werewolf_bite", title: "Укус оборотня", desc: "Выбранного игрока кусает оборотень (добавляет статус «Укушен оборотнем» в Доп. сведение).", actionType: "werewolf_bite" },
+        { id: "give_phobia", title: "Навязать фобию", desc: "Добавляет выбранному игроку новую случайную фобию (например, боязнь тыкв).", actionType: "give_phobia" },
+        { id: "change_health_deg", title: "Обострение / Облегчение", desc: "Меняет степень болезни выбранного игрока на случайную другую.", actionType: "change_health_deg" },
+        { id: "orator_all", title: "Курс ораторского мастерства", desc: "Добавляет всем живым игрокам в Доп. сведение: «Прошёл курс ораторского мастерства».", actionType: "orator_all" },
+        { id: "flip_gender", title: "Смена пола", desc: "Меняет пол выбранного игрока на противоположный (Мужчина ↔ Женщина).", actionType: "flip_gender" },
+        { id: "d20_fact", title: "Кубик судьбы d20 (Факт)", desc: "Выберите Чёт или Нечёт и бросьте кубик d20. Если угадаете — добавите себе случайное «Доп. сведение»!", actionType: "d20_fact" },
+        { id: "d20_steal", title: "Авантюра d20 (Кража)", desc: "Выберите Чёт или Нечёт, цель и бросьте d20. Если угадаете — заберёте Большой багаж у этого игрока!", actionType: "d20_steal" },
+        { id: "make_childfree", title: "Обет бездетности (Чайлдфри)", desc: "Делает выбранного игрока Чайлдфри (добавляет статус «чайлдфри» в графу Пол).", actionType: "make_childfree" },
+        { id: "remove_childfree", title: "Семейные ценности", desc: "Снимает статус «чайлдфри» с выбранного игрока (или с себя).", actionType: "remove_childfree" },
+        { id: "swap_body", title: "Обмен телами", desc: "Вы меняетесь Телосложением с выбранным игроком!", actionType: "swap_body" },
+        { id: "custom_fact_target", title: "Секретное досье", desc: "Позволяет вписать любой придуманный вами факт в «Доп. сведение» выбранного игрока!", actionType: "custom_fact_target" },
+        { id: "custom_phobia", title: "Смена фобии", desc: "Позволяет изменить свою фобию / страх на любую, какую захотите!", actionType: "custom_phobia" }
+      ],
+      events: [
+        "⚡ В бункере пропал Wi-Fi и последний рулон бумаги. Все смотрят на того, у кого самый подозрительный рюкзак!",
+        "⚡ Кто-то тайно открыл банку шпрот в вентиляции. Следующий говорящий оправдывается за этот запах!",
+        "⚡ Найдена старая приставка Dendy с одним джойстиком. Играть будет тот, кого стол признает самым харизматичным.",
+        "⚡ Сбой освещения: в бункере мигает красный свет, а из колонок случайно заиграл шансон на полной громкости.",
+        "⚡ В бункер постучался курьер с пиццей, но требует выгнать одного человека за вход. Ведущий может усилить накал!",
+        "⚡ Найдена заначка печенья с предсказаниями: следующий игрок должен немедленно открыть любую свою закрытую карту!",
+        "⚡ Кто-то заперся в душевой и поёт там караоке уже 40 минут. Расход воды критический!",
+        "⚡ По рации поймали сигнал из соседнего бункера — там спрашивают, нет ли у вас лишнего майонеза и изоленты."
+      ]
+    };
+
+    const TRAIT_META = [
+      { key: "gender", label: "Пол", icon: "user" },
+      { key: "body", label: "Телосложение", icon: "accessibility" },
+      { key: "trait", label: "Человеческая черта", icon: "smile" },
+      { key: "profession", label: "Профессия", icon: "briefcase" },
+      { key: "health", label: "Здоровье", icon: "heart-pulse" },
+      { key: "hobby", label: "Хобби / Увлечение", icon: "sparkles" },
+      { key: "phobia", label: "Фобия / Страх", icon: "alert-triangle" },
+      { key: "backpack", label: "Рюкзак", icon: "backpack" },
+      { key: "bigLuggage", label: "Большой багаж", icon: "package" },
+      { key: "fact", label: "Доп. сведение", icon: "file-text" }
+    ];
+
+    const BOT_NAMES = ["Артём", "Елена", "Максим", "Кира", "Дмитрий", "Алина", "Виктор", "София"];
+
+    // =========================================================================
+    // STORAGE, SUPABASE & SYNC
+    // =========================================================================
+    const STORAGE_KEY_ROOMS = "bunker_rooms_v3";
+    const STORAGE_KEY_CLIENT = "bunker_client_id";
+    const STORAGE_KEY_SUPABASE = "bunker_supabase_cfg";
+    const STORAGE_KEY_PACKS = "bunker_custom_packs_v1";
+
+    const DEFAULT_SUPABASE_CFG = {
+      url: "https://zhzrqtbwvvyxpaswathw.supabase.co",
+      key: "sb_publishable_LlRCfOYafkA2zgUCYo-BnA_rH7d2oc0"
+    };
+
+    function getClientId() {
+      try {
+        let id = sessionStorage.getItem(STORAGE_KEY_CLIENT);
+        if (!id) {
+          id = "p_" + Math.random().toString(36).substring(2, 10);
+          sessionStorage.setItem(STORAGE_KEY_CLIENT, id);
+        }
+        return id;
+      } catch (e) {
+        return "p_" + Math.random().toString(36).substring(2, 10);
+      }
+    }
+
+    const CLIENT_ID = getClientId();
+    let bc = null;
+    try {
+      bc = new BroadcastChannel("bunker_realtime_sync");
+      bc.onmessage = (ev) => {
+        if (ev.data && ev.data.type === "ROOM_UPDATE" && state.room && ev.data.room.code === state.room.code) {
+          state.room = ev.data.room;
+          render();
+        }
+      };
+    } catch (e) {}
+
+    let supabaseClient = null;
+    let supabaseChannel = null;
+    let timerInterval = null;
+
+    function loadCustomPacks() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY_PACKS);
+        return raw ? JSON.parse(raw) : [];
+      } catch (e) {
+        return [];
+      }
+    }
+
+    function saveCustomPacks(packs) {
+      try { localStorage.setItem(STORAGE_KEY_PACKS, JSON.stringify(packs)); } catch (e) {}
+    }
+
+    function loadSupabaseCfg() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY_SUPABASE);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && parsed.url && parsed.key) return parsed;
+        }
+        return { ...DEFAULT_SUPABASE_CFG };
+      } catch (e) {
+        return { ...DEFAULT_SUPABASE_CFG };
+      }
+    }
+
+    let state = {
+      screen: "home", // home | packs | packEditor | lobby | game | gameover
+      playerName: "",
+      joinCode: new URLSearchParams(window.location.search).get("room") || "",
+      room: null,
+      activeTab: "table", // table | mycard | vote | log
+      viewingPlayerId: CLIENT_ID,
+      privacyShield: false,
+      catastropheExpanded: true,
+      supabaseCfg: loadSupabaseCfg(),
+      customPacks: loadCustomPacks(),
+      editingPack: null,
+      survivalTest: { step: 0, answers: [], finished: false }
+    };
+
+    function saveRoomLocal(room) {
+      try {
+        const all = JSON.parse(localStorage.getItem(STORAGE_KEY_ROOMS) || "{}");
+        all[room.code] = room;
+        localStorage.setItem(STORAGE_KEY_ROOMS, JSON.stringify(all));
+      } catch (e) {}
+      if (bc) {
+        try { bc.postMessage({ type: "ROOM_UPDATE", room }); } catch (e) {}
+      }
+      if (supabaseClient) syncRoomToSupabase(room);
+    }
+
+    function loadRoomLocal(code) {
+      try {
+        const all = JSON.parse(localStorage.getItem(STORAGE_KEY_ROOMS) || "{}");
+        return all[code] || null;
+      } catch (e) {
+        return null;
+      }
+    }
+
+    async function initSupabaseIfConfigured() {
+      if (!state.supabaseCfg.url || !state.supabaseCfg.key) return;
+      if (!window.supabase) {
+        await new Promise((resolve) => {
+          const s = document.createElement("script");
+          s.src = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js";
+          s.onload = resolve;
+          s.onerror = resolve;
+          document.head.appendChild(s);
+        });
+      }
+      if (window.supabase) {
+        try {
+          supabaseClient = window.supabase.createClient(state.supabaseCfg.url, state.supabaseCfg.key);
+        } catch (e) {
+          supabaseClient = null;
+        }
+      }
+    }
+
+    async function syncRoomToSupabase(room) {
+      if (!supabaseClient) return;
+      try {
+        const { error } = await supabaseClient
+          .from("bunker_rooms")
+          .upsert({ code: room.code, state: room, updated_at: new Date().toISOString() }, { onConflict: "code" });
+        if (error) {
+          showToast("Ошибка Supabase: " + error.message, "error");
+        }
+      } catch (e) {
+        showToast("Нет связи с Supabase", "error");
+      }
+    }
+
+    async function fetchRoomFromSupabase(code) {
+      if (!supabaseClient) return null;
+      try {
+        const { data, error } = await supabaseClient.from("bunker_rooms").select("state").eq("code", code).single();
+        if (!error && data && data.state) return data.state;
+      } catch (e) {}
+      return null;
+    }
+
+    async function syncPackToSupabase(pack) {
+      if (!supabaseClient) return false;
+      try {
+        const { error } = await supabaseClient
+          .from("bunker_rooms")
+          .upsert({ code: "PACK__" + pack.id, state: pack, updated_at: new Date().toISOString() }, { onConflict: "code" });
+        if (error) {
+          showToast("Ошибка сохранения пака в облако: " + error.message, "error");
+          return false;
+        }
+        return true;
+      } catch (e) {
+        return false;
+      }
+    }
+
+    async function deletePackFromSupabase(packId) {
+      if (!supabaseClient) return;
+      try {
+        await supabaseClient.from("bunker_rooms").delete().eq("code", "PACK__" + packId);
+      } catch (e) {}
+    }
+
+    async function loadPacksFromSupabase() {
+      if (!supabaseClient) return;
+      try {
+        const { data, error } = await supabaseClient
+          .from("bunker_rooms")
+          .select("state")
+          .like("code", "PACK__%");
+        if (!error && Array.isArray(data)) {
+          const map = new Map();
+          state.customPacks.forEach(p => map.set(p.id, p));
+          data.forEach(row => {
+            if (row && row.state && row.state.id) {
+              map.set(row.state.id, { ...row.state, syncedCloud: true });
+            }
+          });
+          state.customPacks = Array.from(map.values());
+          saveCustomPacks(state.customPacks);
+          render();
+        }
+      } catch (e) {}
+    }
+
+    function subscribeSupabaseRoom(code) {
+      if (!supabaseClient) return;
+      if (supabaseChannel) {
+        try { supabaseClient.removeChannel(supabaseChannel); } catch (e) {}
+      }
+      supabaseChannel = supabaseClient
+        .channel("room_" + code)
+        .on("postgres_changes", { event: "*", schema: "public", table: "bunker_rooms", filter: `code=eq.${code}` }, (payload) => {
+          if (payload.new && payload.new.state) {
+            state.room = payload.new.state;
+            if (state.room.phase === "playing" || state.room.phase === "voting") state.screen = "game";
+            if (state.room.phase === "gameover") state.screen = "gameover";
+            render();
+          }
+        })
+        .subscribe();
+    }
+
+    // =========================================================================
+    // HELPERS
+    // =========================================================================
+    function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+
+    function pickMultiple(arr, count) {
+      const copy = [...arr];
+      const res = [];
+      for (let i = 0; i < count && copy.length > 0; i++) {
+        const idx = Math.floor(Math.random() * copy.length);
+        res.push(copy.splice(idx, 1)[0]);
+      }
+      return res;
+    }
+
+    function generateRoomCode() { return Math.floor(1000 + Math.random() * 9000).toString(); }
+
+    function showToast(msg, type = "info") {
+      const container = document.getElementById("toast-container");
+      const el = document.createElement("div");
+      const colors = {
+        info: "bg-bunker-card border-bunker-border text-gray-100",
+        success: "bg-emerald-950/90 border-emerald-500/40 text-emerald-200",
+        warn: "bg-amber-950/90 border-amber-500/40 text-amber-200",
+        error: "bg-red-950/90 border-red-500/40 text-red-200"
+      };
+      el.className = `pointer-events-auto px-4 py-3 rounded-xl border text-sm font-medium shadow-xl transition-all duration-300 ${colors[type] || colors.info}`;
+      el.textContent = msg;
+      container.appendChild(el);
+      setTimeout(() => {
+        el.style.opacity = "0";
+        el.style.transform = "translateY(-6px)";
+        setTimeout(() => el.remove(), 300);
+      }, 3000);
+    }
+
+    function openModal(html) {
+      const overlay = document.getElementById("modal-overlay");
+      const content = document.getElementById("modal-content");
+      content.innerHTML = html;
+      overlay.classList.remove("hidden");
+      overlay.classList.add("flex");
+      if (window.lucide) lucide.createIcons();
+    }
+
+    function closeModal() {
+      const overlay = document.getElementById("modal-overlay");
+      overlay.classList.add("hidden");
+      overlay.classList.remove("flex");
+    }
+
+    document.getElementById("modal-overlay").addEventListener("click", (e) => {
+      if (e.target.id === "modal-overlay") closeModal();
+    });
+
+    function copyInviteLink(code) {
+      const base = window.location.origin && window.location.origin !== "null"
+        ? window.location.origin + window.location.pathname
+        : "";
+      if (!base) {
+        copyText(code);
+        return;
+      }
+      copyText(`${base}?room=${code}`);
+    }
+
+    function copyText(text) {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(() => showToast("Скопировано: " + text, "success")).catch(() => fallbackCopy(text));
+      } else {
+        fallbackCopy(text);
+      }
+    }
+
+    function fallbackCopy(text) {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        document.execCommand("copy");
+        showToast("Скопировано: " + text, "success");
+      } catch (e) {
+        showToast("Код: " + text, "info");
+      }
+      ta.remove();
+    }
+
+    // =========================================================================
+    // CUSTOM PACKS MANAGEMENT + JSON EXPORT/IMPORT
+    // =========================================================================
+    function createEmptyPack() {
+      return {
+        id: "pack_" + Math.random().toString(36).substring(2, 9),
+        name: "Мой личный пак",
+        description: "",
+        catastropheTitle: "",
+        catastropheDesc: "",
+        duration: "",
+        bunkerArea: "",
+        bunkerLocation: "",
+        bunkerRooms: "",
+        bunkerFood: "",
+        bunkerFeatures: [],
+        customEvents: [],
+        onlyCustom: false,
+        disableBase: {},
+        excludedBase: {},
+        ageMin: 18,
+        ageMax: 65,
+        useAgeRange: true,
+        childfreeChance: 20,
+        heightMin: 155,
+        heightMax: 196,
+        useHeightRange: true,
+        useProfExp: true,
+        customProfExp: [],
+        useHealthDeg: true,
+        customHealthDeg: [],
+        useHobbyExp: true,
+        customHobbyExp: [],
+        traits: {
+          gender: [], body: [], trait: [], profession: [], health: [],
+          hobby: [], phobia: [], backpack: [], bigLuggage: [], fact: []
+        }
+      };
+    }
+
+    function getBasePoolForKey(key) {
+      const map = {
+        gender: DECKS.genders,
+        body: BODY_TYPES,
+        trait: DECKS.characterTraits,
+        profession: DECKS.professions,
+        health: DECKS.healthConditions,
+        hobby: DECKS.hobbies,
+        phobia: DECKS.phobias,
+        backpack: DECKS.backpack,
+        bigLuggage: DECKS.bigLuggage,
+        fact: DECKS.facts
+      };
+      return map[key] || [];
+    }
+
+    function openExcludeBaseModal(key) {
+      const p = state.editingPack;
+      if (!p) return;
+      if (!p.excludedBase) p.excludedBase = {};
+      const baseList = getBasePoolForKey(key);
+      const excluded = new Set(p.excludedBase[key] || []);
+      const label = TRAIT_META.find(m => m.key === key).label;
+
+      openModal(`
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-base font-bold text-white">Исключения из базы: ${label}</h3>
+          <button onclick="closeModal()" class="text-bunker-muted hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+        </div>
+        <p class="text-xs text-bunker-muted mb-3">Снимите галочки с вариантов, которые НЕ должны выпадать из обычной колоды:</p>
+        <div class="flex gap-2 mb-3">
+          <button onclick="toggleAllBaseExclude('${key}', false)" class="px-3 py-1.5 rounded-lg bg-bunker-card border border-bunker-border text-xs text-emerald-400">Включить все</button>
+          <button onclick="toggleAllBaseExclude('${key}', true)" class="px-3 py-1.5 rounded-lg bg-bunker-card border border-bunker-border text-xs text-red-400">Исключить все</button>
+        </div>
+        <div class="max-h-64 overflow-y-auto space-y-1.5 pr-1 mb-4">
+          ${baseList.map((item, idx) => `
+            <label class="flex items-center gap-2.5 p-2 rounded-lg bg-bunker-bg border border-bunker-border/60 text-xs text-gray-200 cursor-pointer hover:border-amber-500/40">
+              <input type="checkbox" id="ex-${key}-${idx}" ${!excluded.has(item) ? 'checked' : ''} onchange="toggleBaseExcludeItem('${key}', ${idx})" class="rounded bg-bunker-card border-bunker-border text-amber-500">
+              <span>${item}</span>
+            </label>
+          `).join("")}
+        </div>
+        <button onclick="closeModal(); render();" class="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold text-sm">Готово</button>
+      `);
+    }
+
+    function toggleBaseExcludeItem(key, idx) {
+      const p = state.editingPack;
+      if (!p.excludedBase) p.excludedBase = {};
+      const item = getBasePoolForKey(key)[idx];
+      const arr = p.excludedBase[key] || [];
+      const pos = arr.indexOf(item);
+      if (pos >= 0) arr.splice(pos, 1);
+      else arr.push(item);
+      p.excludedBase[key] = arr;
+    }
+
+    function toggleAllBaseExclude(key, excludeAll) {
+      const p = state.editingPack;
+      if (!p.excludedBase) p.excludedBase = {};
+      p.excludedBase[key] = excludeAll ? [...getBasePoolForKey(key)] : [];
+      openExcludeBaseModal(key);
+    }
+
+    function openPackEditor(packId = null) {
+      if (packId) {
+        const found = state.customPacks.find(p => p.id === packId);
+        state.editingPack = found ? JSON.parse(JSON.stringify(found)) : createEmptyPack();
+      } else {
+        state.editingPack = createEmptyPack();
+      }
+      state.screen = "packEditor";
+      render();
+    }
+
+    function parseLines(val) {
+      return (val || "").split("\n").map(s => s.trim()).filter(Boolean);
+    }
+
+    function saveEditingPack() {
+      const p = state.editingPack;
+      p.name = document.getElementById("pk-name").value.trim() || "Без названия";
+      p.description = document.getElementById("pk-desc").value.trim();
+      p.catastropheTitle = document.getElementById("pk-cat-title").value.trim();
+      p.catastropheDesc = document.getElementById("pk-cat-desc").value.trim();
+      p.duration = document.getElementById("pk-duration").value.trim();
+      p.bunkerArea = document.getElementById("pk-area").value.trim();
+      p.bunkerLocation = document.getElementById("pk-location").value.trim();
+      p.bunkerRooms = document.getElementById("pk-rooms").value.trim();
+      p.bunkerFood = document.getElementById("pk-food").value.trim();
+      p.bunkerFeatures = parseLines(document.getElementById("pk-features").value);
+      p.customEvents = parseLines(document.getElementById("pk-events").value);
+      p.ageMin = parseInt(document.getElementById("pk-age-min").value, 10) || 18;
+      p.ageMax = Math.max(p.ageMin, parseInt(document.getElementById("pk-age-max").value, 10) || 65);
+      p.useAgeRange = document.getElementById("pk-use-age").checked;
+      p.childfreeChance = Math.min(100, Math.max(0, parseInt(document.getElementById("pk-cf-chance").value, 10) || 0));
+      p.heightMin = parseInt(document.getElementById("pk-height-min").value, 10) || 150;
+      p.heightMax = Math.max(p.heightMin, parseInt(document.getElementById("pk-height-max").value, 10) || 210);
+      p.useHeightRange = document.getElementById("pk-use-height").checked;
+      p.useProfExp = document.getElementById("pk-use-prof-exp").checked;
+      p.customProfExp = document.getElementById("pk-prof-exp").value.split(",").map(x => x.trim()).filter(Boolean);
+      p.useHealthDeg = document.getElementById("pk-use-health-deg").checked;
+      p.customHealthDeg = document.getElementById("pk-health-deg").value.split(",").map(x => x.trim()).filter(Boolean);
+      p.useHobbyExp = document.getElementById("pk-use-hobby-exp").checked;
+      p.customHobbyExp = document.getElementById("pk-hobby-exp").value.split(",").map(x => x.trim()).filter(Boolean);
+
+      p.onlyCustom = document.getElementById("pk-only-custom").checked;
+      if (!p.disableBase) p.disableBase = {};
+      TRAIT_META.forEach(m => {
+        const el = document.getElementById("pk-trait-" + m.key);
+        if (el) p.traits[m.key] = parseLines(el.value);
+        const disEl = document.getElementById("pk-disbase-" + m.key);
+        if (disEl) p.disableBase[m.key] = disEl.checked;
+      });
+
+      const idx = state.customPacks.findIndex(x => x.id === p.id);
+      if (idx >= 0) state.customPacks[idx] = p;
+      else state.customPacks.push(p);
+
+      p.syncedCloud = Boolean(supabaseClient);
+      saveCustomPacks(state.customPacks);
+      syncPackToSupabase(p);
+      state.editingPack = null;
+      state.screen = "packs";
+      showToast(supabaseClient ? `Пак «${p.name}» сохранён в облако!` : `Пак «${p.name}» сохранён локально!`, "success");
+      render();
+    }
+
+    function deleteCustomPack(packId) {
+      state.customPacks = state.customPacks.filter(p => p.id !== packId);
+      saveCustomPacks(state.customPacks);
+      deletePackFromSupabase(packId);
+      showToast("Пак удалён", "info");
+      render();
+    }
+
+    function exportPackJSON(packId) {
+      const pack = state.customPacks.find(p => p.id === packId);
+      if (!pack) return;
+      const jsonStr = JSON.stringify(pack, null, 2);
+      copyText(jsonStr);
+      showToast("JSON пака скопирован в буфер!", "success");
+    }
+
+    function openImportPackModal() {
+      openModal(`
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-lg font-bold text-white">Импорт личного пака (JSON)</h3>
+          <button onclick="closeModal()" class="text-bunker-muted hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+        </div>
+        <p class="text-xs text-bunker-muted mb-3">Вставьте скопированный JSON-код пака:</p>
+        <textarea id="import-pack-json" rows="6" placeholder='{"name": "Мой пак", ...}' class="w-full px-3 py-2 rounded-xl bg-bunker-bg border border-bunker-border text-xs font-mono text-white mb-4"></textarea>
+        <button onclick="confirmImportPack()" class="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold text-sm">Импортировать</button>
+      `);
+    }
+
+    function confirmImportPack() {
+      try {
+        const raw = document.getElementById("import-pack-json").value.trim();
+        const parsed = JSON.parse(raw);
+        if (!parsed.name || !parsed.traits) throw new Error("Invalid");
+        parsed.id = "pack_" + Math.random().toString(36).substring(2, 9);
+        parsed.syncedCloud = Boolean(supabaseClient);
+        state.customPacks.push(parsed);
+        saveCustomPacks(state.customPacks);
+        syncPackToSupabase(parsed);
+        closeModal();
+        showToast(`Пак «${parsed.name}» импортирован!`, "success");
+        render();
+      } catch (e) {
+        showToast("Неверный формат JSON", "error");
+      }
+    }
+
+    function fillPackExample() {
+      document.getElementById("pk-name").value = "Киберпанк-бункер 2099";
+      document.getElementById("pk-desc").value = "Корпоративная война и восстание нейросетей.";
+      document.getElementById("pk-cat-title").value = "Затмение нейросети «Арес»";
+      document.getElementById("pk-cat-desc").value = "Боевые дроны зачищают поверхность. Выжившие скрылись в техно-бункере.";
+      document.getElementById("pk-duration").value = "1 год и 4 месяца";
+      document.getElementById("pk-area").value = "135 м²";
+      document.getElementById("pk-location").value = "Подземный уровень Нео-Сити";
+      document.getElementById("pk-rooms").value = "Серверный зал и мини-кухня";
+      document.getElementById("pk-food").value = "Синтетические пайки на 100% срока";
+      document.getElementById("pk-features").value = "3D-принтер по металлу\nГлушилка радиосигналов\nЗапасные нейроимпланты";
+      document.getElementById("pk-trait-profession").value = "Нетраннер\nКибер-хирург\nОператор дронов\nИнженер-робототехник";
+      document.getElementById("pk-trait-bigLuggage").value = "Разобранный грузовой дрон\nМобильный сервер\nЯщик литиевых батарей";
+      showToast("Пример заполнен!", "info");
+    }
+
+    // =========================================================================
+    // GAME LOGIC & TIMER
+    // =========================================================================
+    function generateDefaultGender() {
+      const g = pick(DECKS.genders);
+      const age = Math.floor(18 + Math.random() * 48);
+      const cfChance = (customPack && customPack.childfreeChance != null) ? (customPack.childfreeChance / 100) : 0.20;
+        const cf = Math.random() < cfChance ? " (чайлдфри)" : "";
+      return `${g}, ${age} лет${cf}`;
+    }
+
+    function generateDefaultBody() {
+      return `${pick(BODY_TYPES)}, ${Math.floor(155 + Math.random() * 42)} см`;
+    }
+
+    function generateDefaultHealth() {
+      const cond = pick(DECKS.healthConditions);
+      if (cond.includes("Полностью здоров") || cond.includes("иммунитет") || cond.includes("Глухонемой") || cond.includes("Слепой")) return cond;
+      const deg = pick(HEALTH_DEG);
+      if (ZONE_DISEASES.some(zd => cond.toLowerCase().includes(zd.toLowerCase()))) {
+        return `${cond} (Область: ${pick(BODY_ZONES)}, ${deg})`;
+      }
+      return cond.includes("(") ? cond : `${cond} (${deg})`;
+    }
+
+    function randInt(min, max) {
+      return Math.floor(min + Math.random() * (max - min + 1));
+    }
+
+    function createCharacter(customPack, sessionExcluded = {}) {
+      const pickRaw = (key, baseArr) => {
+        const sessEx = (sessionExcluded && sessionExcluded[key]) ? sessionExcluded[key] : [];
+        const customPool = (customPack && customPack.traits && customPack.traits[key]) ? customPack.traits[key].filter(x => !sessEx.includes(x)) : [];
+        if (customPool.length > 0) return pick(customPool);
+        if (customPack && (customPack.onlyCustom || (customPack.disableBase && customPack.disableBase[key]))) {
+          return "Не указано";
+        }
+        const excluded = (customPack && customPack.excludedBase && customPack.excludedBase[key]) ? customPack.excludedBase[key] : [];
+        const filtered = baseArr.filter(x => !excluded.includes(x) && !sessEx.includes(x));
+        return filtered.length > 0 ? pick(filtered) : "Не указано";
+      };
+
+      const useAge = customPack ? (customPack.useAgeRange !== false) : true;
+      const ageMin = (customPack && customPack.ageMin != null) ? customPack.ageMin : 18;
+      const ageMax = (customPack && customPack.ageMax != null) ? customPack.ageMax : 65;
+      let genderVal = pickRaw("gender", DECKS.genders);
+      if (useAge && genderVal !== "Не указано") {
+        const cf = Math.random() < 0.15 ? " (чайлдфри)" : "";
+        genderVal = `${genderVal}, ${randInt(ageMin, ageMax)} лет${cf}`;
+      }
+
+      const useHeight = customPack ? (customPack.useHeightRange !== false) : true;
+      const hMin = (customPack && customPack.heightMin != null) ? customPack.heightMin : 155;
+      const hMax = (customPack && customPack.heightMax != null) ? customPack.heightMax : 196;
+      let bodyVal = pickRaw("body", BODY_TYPES);
+      if (useHeight && bodyVal !== "Не указано") {
+        bodyVal = `${bodyVal}, ${randInt(hMin, hMax)} см`;
+      }
+
+      const useProfExp = customPack ? (customPack.useProfExp !== false) : true;
+      const profExpPool = (customPack && customPack.customProfExp && customPack.customProfExp.length > 0) ? customPack.customProfExp : PROF_EXP;
+      let profVal = pickRaw("profession", DECKS.professions);
+      if (useProfExp && profVal !== "Не указано") profVal = `${profVal} (${pick(profExpPool)})`;
+
+      const useHealthDeg = customPack ? (customPack.useHealthDeg !== false) : true;
+      const healthDegPool = (customPack && customPack.customHealthDeg && customPack.customHealthDeg.length > 0) ? customPack.customHealthDeg : HEALTH_DEG;
+      let healthVal = pickRaw("health", DECKS.healthConditions);
+      if (healthVal !== "Не указано" && !healthVal.includes("Полностью здоров") && !healthVal.includes("иммунитет") && !healthVal.includes("Глухонемой") && !healthVal.includes("Слепой")) {
+        const hasZone = ZONE_DISEASES.some(zd => healthVal.toLowerCase().includes(zd.toLowerCase()));
+        const degText = useHealthDeg ? pick(healthDegPool) : "";
+        if (hasZone) {
+          const zone = pick(BODY_ZONES);
+          healthVal = degText ? `${healthVal} (Область: ${zone}, ${degText})` : `${healthVal} (Область: ${zone})`;
+        } else if (degText && !healthVal.includes("(")) {
+          healthVal = `${healthVal} (${degText})`;
+        }
+      }
+
+      const useHobbyExp = customPack ? (customPack.useHobbyExp !== false) : true;
+      const hobbyExpPool = (customPack && customPack.customHobbyExp && customPack.customHobbyExp.length > 0) ? customPack.customHobbyExp : HOBBY_EXP;
+      let hobbyVal = pickRaw("hobby", DECKS.hobbies);
+      if (useHobbyExp && hobbyVal !== "Не указано") hobbyVal = `${hobbyVal} (${pick(hobbyExpPool)})`;
+
+      const revealed = {};
+      TRAIT_META.forEach(m => { revealed[m.key] = false; });
+
+      return {
+        traits: {
+          gender: genderVal,
+          body: bodyVal,
+          trait: pickRaw("trait", DECKS.characterTraits),
+          profession: profVal,
+          health: healthVal,
+          hobby: hobbyVal,
+          phobia: pickRaw("phobia", DECKS.phobias),
+          backpack: pickRaw("backpack", DECKS.backpack),
+          bigLuggage: pickRaw("bigLuggage", DECKS.bigLuggage),
+          fact: pickRaw("fact", DECKS.facts)
+        },
+        revealed,
+        profAbilityUsed: false,
+        hobbyAbilityUsed: false,
+        specials: pickMultiple(DECKS.specialCards, 2).map(s => ({ ...s, used: false }))
+      };
+    }
+
+    async function createRoom(isQuickDemo = false) {
+      if (!supabaseClient && state.supabaseCfg.url && state.supabaseCfg.key) { await initSupabaseIfConfigured(); }
+      const nameInput = document.getElementById("input-player-name");
+      const name = (nameInput ? nameInput.value.trim() : "") || state.playerName || "Выживший";
+      state.playerName = name;
+
+      const code = generateRoomCode();
+      const players = [{
+        id: CLIENT_ID,
+        name,
+        isHost: true,
+        isBot: false,
+        isLocal: false,
+        exiled: false,
+        immunity: false,
+        doubleVote: false,
+        character: null
+      }];
+
+      if (isQuickDemo) {
+        pickMultiple(BOT_NAMES, 5).forEach((bn, idx) => {
+          players.push({
+            id: "bot_" + idx + "_" + Math.random().toString(36).slice(2, 6),
+            name: bn + " (Бот)",
+            isHost: false,
+            isBot: true,
+            isLocal: false,
+            exiled: false,
+            immunity: false,
+            doubleVote: false,
+            character: null
+          });
+        });
+      }
+
+      const room = {
+        code,
+        hostId: CLIENT_ID,
+        hostPlays: true, // true = играет с карточкой, false = только ведущий
+        selectedPackId: "base",
+        disabledTraits: [],
+        sessionExcluded: {},
+        phase: "lobby",
+        round: 1,
+        startedAt: null,
+        eventPool: null,
+        maxPlayers: 12,
+        bunkerSlots: Math.max(1, Math.floor(players.length / 2)),
+        catastrophe: null,
+        bunker: null,
+        players,
+        timer: { seconds: 60, running: false, speakerId: null },
+        activeEvent: null,
+        voting: { active: false, votes: {}, lastResult: null },
+        log: [`Комната ${code} создана. Ведущий: ${name}.`]
+      };
+
+      state.room = room;
+      state.viewingPlayerId = CLIENT_ID;
+      state.screen = "lobby";
+      saveRoomLocal(room);
+      subscribeSupabaseRoom(code);
+
+      if (isQuickDemo) {
+        startGame();
+        showToast("Тест-матч с ботами запущен!", "success");
+      } else {
+        showToast(`Комната ${code} создана`, "success");
+        render();
+      }
+    }
+
+    async function joinRoom() {
+      if (!supabaseClient && state.supabaseCfg.url && state.supabaseCfg.key) { await initSupabaseIfConfigured(); }
+      const nameEl = document.getElementById("input-player-name");
+      const codeEl = document.getElementById("input-room-code");
+      const name = (nameEl ? nameEl.value.trim() : "") || "Выживший";
+      const code = (codeEl ? codeEl.value.trim() : "");
+
+      if (!/^\d{4}$/.test(code)) {
+        showToast("Введите 4-значный код комнаты", "warn");
+        return;
+      }
+
+      state.playerName = name;
+      let room = loadRoomLocal(code);
+      if (!room && supabaseClient) room = await fetchRoomFromSupabase(code);
+
+      if (!room) {
+        showToast(`Комната ${code} не найдена`, "error");
+        return;
+      }
+
+      if (!room.players.find(p => p.id === CLIENT_ID)) {
+        if (room.phase !== "lobby") {
+          showToast("Игра уже началась", "warn");
+          return;
+        }
+        const limit = room.maxPlayers || 12;
+        if (room.players.length >= limit) {
+          showToast(`Комната заполнена (максимум ${limit} чел.)`, "warn");
+          return;
+        }
+        room.players.push({
+          id: CLIENT_ID,
+          name,
+          isHost: false,
+          isBot: false,
+          isLocal: false,
+          exiled: false,
+          immunity: false,
+          doubleVote: false,
+          character: null
+        });
+        room.bunkerSlots = Math.max(1, Math.floor(room.players.length / 2));
+        room.log.unshift(`${name} вошёл в комнату.`);
+        saveRoomLocal(room);
+      }
+
+      state.room = room;
+      state.viewingPlayerId = CLIENT_ID;
+      state.screen = room.phase === "lobby" ? "lobby" : (room.phase === "gameover" ? "gameover" : "game");
+      subscribeSupabaseRoom(code);
+      render();
+    }
+
+    function toggleHostPlays() {
+      if (!state.room || state.room.hostId !== CLIENT_ID) return;
+      state.room.hostPlays = !state.room.hostPlays;
+      saveRoomLocal(state.room);
+      render();
+    }
+
+    function addBotOrLocalPlayer(isBot) {
+      if (!state.room || state.room.phase !== "lobby") return;
+      const limit = state.room.maxPlayers || 12;
+      if (state.room.players.length >= limit) {
+        showToast(`Достигнут лимит комнаты (${limit} игроков)`, "warn");
+        return;
+      }
+      const usedNames = new Set(state.room.players.map(p => p.name.replace(" (Бот)", "")));
+      const available = BOT_NAMES.filter(n => !usedNames.has(n));
+      const baseName = available.length > 0 ? pick(available) : `Игрок ${state.room.players.length + 1}`;
+      state.room.players.push({
+        id: (isBot ? "bot_" : "loc_") + Math.random().toString(36).substring(2, 8),
+        name: isBot ? `${baseName} (Бот)` : baseName,
+        isHost: false,
+        isBot,
+        isLocal: !isBot,
+        exiled: false,
+        immunity: false,
+        doubleVote: false,
+        character: null
+      });
+      state.room.bunkerSlots = Math.max(1, Math.floor(state.room.players.length / 2));
+      saveRoomLocal(state.room);
+      render();
+    }
+
+    function removePlayer(playerId) {
+      if (!state.room || state.room.phase !== "lobby" || playerId === state.room.hostId) return;
+      state.room.players = state.room.players.filter(p => p.id !== playerId);
+      state.room.bunkerSlots = Math.max(1, Math.floor(state.room.players.length / 2));
+      saveRoomLocal(state.room);
+      render();
+    }
+
+    function adjustSlots(delta) {
+      if (!state.room) return;
+      const activeCount = state.room.players.filter(p => state.room.hostPlays || !p.isHost).length;
+      const maxSlots = Math.max(1, activeCount - 1);
+      state.room.bunkerSlots = Math.min(maxSlots, Math.max(1, state.room.bunkerSlots + delta));
+      saveRoomLocal(state.room);
+      render();
+    }
+
+    function adjustMaxPlayers(delta) {
+      if (!state.room || state.room.hostId !== CLIENT_ID) return;
+      const minAllowed = Math.max(3, state.room.players.length);
+      const cur = state.room.maxPlayers || 12;
+      state.room.maxPlayers = Math.min(20, Math.max(minAllowed, cur + delta));
+      saveRoomLocal(state.room);
+      render();
+    }
+
+    function getActiveTraitMeta(room) {
+      const dis = (room && room.disabledTraits) ? room.disabledTraits : [];
+      return TRAIT_META.filter(m => !dis.includes(m.key));
+    }
+
+    function openLobbyFilterModal(selectedKey = "profession") {
+      const room = state.room;
+      if (!room || room.hostId !== CLIENT_ID) return;
+      if (!room.disabledTraits) room.disabledTraits = [];
+      if (!room.sessionExcluded) room.sessionExcluded = {};
+
+      const customPack = room.selectedPackId !== "base"
+        ? state.customPacks.find(p => p.id === room.selectedPackId)
+        : null;
+
+      let pool = [];
+      if (customPack && customPack.traits && customPack.traits[selectedKey] && customPack.traits[selectedKey].length > 0) {
+        pool = customPack.traits[selectedKey];
+      } else if (!customPack || (!customPack.onlyCustom && !(customPack.disableBase && customPack.disableBase[selectedKey]))) {
+        const packEx = (customPack && customPack.excludedBase && customPack.excludedBase[selectedKey]) ? customPack.excludedBase[selectedKey] : [];
+        pool = getBasePoolForKey(selectedKey).filter(x => !packEx.includes(x));
+      }
+
+      const excludedSet = new Set(room.sessionExcluded[selectedKey] || []);
+
+      openModal(`
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-base font-bold text-white flex items-center gap-2">
+            <i data-lucide="sliders-horizontal" class="w-4 h-4 text-amber-400"></i>
+            Фильтр характеристик для игры
+          </h3>
+          <button onclick="closeModal()" class="text-bunker-muted hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+        </div>
+
+        <div class="mb-4">
+          <div class="text-xs font-semibold text-bunker-muted mb-2">1. Какие характеристики включены в этой игре:</div>
+          <div class="grid grid-cols-2 gap-1.5">
+            ${TRAIT_META.map(m => {
+              const isOn = !room.disabledTraits.includes(m.key);
+              return `
+                <label class="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-bunker-bg border border-bunker-border/70 text-xs text-gray-200 cursor-pointer">
+                  <input type="checkbox" ${isOn ? 'checked' : ''} onchange="toggleLobbyTrait('${m.key}')" class="rounded bg-bunker-card border-bunker-border text-amber-500">
+                  <span class="truncate">${m.label}</span>
+                </label>
+              `;
+            }).join("")}
+          </div>
+        </div>
+
+        <div class="border-t border-bunker-border pt-3">
+          <div class="text-xs font-semibold text-bunker-muted mb-2">2. Исключить конкретные варианты (из выбранного пака):</div>
+          <select onchange="openLobbyFilterModal(this.value)" class="w-full px-3 py-2 rounded-xl bg-bunker-bg border border-bunker-border text-xs text-white mb-2.5">
+            ${TRAIT_META.map(m => `<option value="${m.key}" ${m.key === selectedKey ? 'selected' : ''}>${m.label}</option>`).join("")}
+          </select>
+          <div class="max-h-48 overflow-y-auto space-y-1 pr-1 mb-3">
+            ${pool.length > 0 ? pool.map((item, idx) => `
+              <label class="flex items-center gap-2 p-1.5 rounded-lg bg-bunker-bg border border-bunker-border/50 text-xs text-gray-200 cursor-pointer">
+                <input type="checkbox" ${!excludedSet.has(item) ? 'checked' : ''} onchange="toggleSessionExclude('${selectedKey}', ${idx}, '${encodeURIComponent(item)}')" class="rounded bg-bunker-card border-bunker-border text-amber-500">
+                <span>${item}</span>
+              </label>
+            `).join("") : '<div class="text-xs text-bunker-muted py-2">В этой категории нет вариантов для фильтрации</div>'}
+          </div>
+        </div>
+
+        <button onclick="closeModal(); render();" class="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold text-sm">Готово</button>
+      `);
+    }
+
+    function toggleLobbyTrait(key) {
+      const room = state.room;
+      if (!room.disabledTraits) room.disabledTraits = [];
+      const idx = room.disabledTraits.indexOf(key);
+      if (idx >= 0) room.disabledTraits.splice(idx, 1);
+      else room.disabledTraits.push(key);
+      saveRoomLocal(room);
+    }
+
+    function toggleSessionExclude(key, idx, encodedItem) {
+      const room = state.room;
+      if (!room.sessionExcluded) room.sessionExcluded = {};
+      const item = decodeURIComponent(encodedItem);
+      const arr = room.sessionExcluded[key] || [];
+      const pos = arr.indexOf(item);
+      if (pos >= 0) arr.splice(pos, 1);
+      else arr.push(item);
+      room.sessionExcluded[key] = arr;
+      saveRoomLocal(room);
+    }
+
+    function selectRoomPack(packId) {
+      if (!state.room || state.room.hostId !== CLIENT_ID) return;
+      state.room.selectedPackId = packId;
+      saveRoomLocal(state.room);
+      render();
+    }
+
+    function getPlayingParticipants(room) {
+      return room.players.filter(p => room.hostPlays || !p.isHost);
+    }
+
+    function startGame() {
+      const room = state.room;
+      if (!room) return;
+      const participants = getPlayingParticipants(room);
+      if (participants.length < 3) {
+        showToast("Для игры нужно минимум 3 играющих участника", "warn");
+        return;
+      }
+
+      const customPack = room.selectedPackId !== "base"
+        ? state.customPacks.find(p => p.id === room.selectedPackId)
+        : null;
+
+      const baseCat = pick(DECKS.catastrophes);
+      room.catastrophe = {
+        title: (customPack && customPack.catastropheTitle) ? customPack.catastropheTitle : baseCat.title,
+        desc: (customPack && customPack.catastropheDesc) ? customPack.catastropheDesc : baseCat.desc,
+        duration: (customPack && customPack.duration) ? customPack.duration : baseCat.duration,
+        packName: customPack ? customPack.name : "Базовый пак"
+      };
+
+      room.bunker = {
+        area: (customPack && customPack.bunkerArea) ? customPack.bunkerArea : pick(DECKS.bunkerSpecs.areas),
+        location: (customPack && customPack.bunkerLocation) ? customPack.bunkerLocation : pick(DECKS.bunkerSpecs.locations),
+        rooms: (customPack && customPack.bunkerRooms) ? customPack.bunkerRooms : pick(DECKS.bunkerSpecs.rooms),
+        food: (customPack && customPack.bunkerFood) ? customPack.bunkerFood : pick(DECKS.bunkerSpecs.food),
+        features: (customPack && customPack.bunkerFeatures && customPack.bunkerFeatures.length > 0)
+          ? customPack.bunkerFeatures
+          : pickMultiple(DECKS.bunkerSpecs.features, 4)
+      };
+
+      room.players.forEach(p => {
+        p.exiled = false;
+        p.immunity = false;
+        p.doubleVote = false;
+        if (!room.hostPlays && p.isHost) {
+          p.character = null;
+        } else {
+          p.character = createCharacter(customPack, room.sessionExcluded || {});
+          if (p.isBot) p.character.revealed.profession = true;
+        }
+      });
+
+      room.phase = "playing";
+      room.round = 1;
+      room.startedAt = Date.now();
+      room.eventPool = (customPack && customPack.onlyCustom)
+        ? (customPack.customEvents || [])
+        : ((customPack && customPack.customEvents && customPack.customEvents.length > 0) ? customPack.customEvents : DECKS.events);
+      room.timer = { seconds: 60, running: false, speakerId: participants[0].id };
+      room.voting = { active: false, votes: {}, lastResult: null };
+      room.log.unshift(`Игра началась! Пак: «${room.catastrophe.packName}».`);
+      state.screen = "game";
+      state.activeTab = "table";
+      saveRoomLocal(room);
+      render();
+    }
+
+    // Speech Timer Controls (для ведущего)
+    function applyRandomEvent(room) {
+      const participants = getPlayingParticipants(room).filter(p => !p.exiled && p.character);
+      if (room.eventPool && room.eventPool.length === 0) return "";
+      const hasCustom = room.eventPool && room.eventPool !== DECKS.events && room.eventPool.length > 0;
+      if (hasCustom && Math.random() < 0.7) {
+        const txt = pick(room.eventPool);
+        room.activeEvent = txt;
+        room.log.unshift(txt);
+        return txt;
+      }
+
+      const actions = ["reveal_random", "bunker_break", "bunker_find", "immunity_gift", "double_vote_gift", "worsen_health", "heal_player", "break_luggage", "new_phobia"];
+      if (participants.length >= 2) actions.push("swap_backpacks");
+      if (room.bunkerSlots < Math.max(1, participants.length - 1)) actions.push("extra_slot");
+      if (room.bunkerSlots > 1) actions.push("shrink_slot");
+
+      const act = pick(actions);
+      let msg = "";
+
+      if (act === "reveal_random" && participants.length > 0) {
+        const target = pick(participants);
+        const hidden = TRAIT_META.filter(m => !target.character.revealed[m.key]);
+        if (hidden.length > 0) {
+          const m = pick(hidden);
+          target.character.revealed[m.key] = true;
+          msg = `⚡ Скачок напряжения! У игрока ${target.name} случайно открылась карта «${m.label}»: ${target.character.traits[m.key]}`;
+        }
+      } else if (act === "bunker_break") {
+        const issue = pick(["Засор главной вентиляции", "Короткое замыкание в коридоре", "Протечка трубы с водой", "Сломался замок санузла"]);
+        room.bunker.features.push("⚠️ " + issue);
+        msg = `⚡ Авария в бункере! Добавлена новая проблема: ${issue}.`;
+      } else if (act === "bunker_find") {
+        const item = pick(["Заначка тушёнки (10 банок)", "Аптечка с антибиотиками", "Ящик с инструментами", "Запасные фильтры для воды"]);
+        room.bunker.features.push("✅ " + item);
+        msg = `⚡ Тайник в стене! В бункере найдено: ${item}.`;
+      } else if (act === "extra_slot") {
+        room.bunkerSlots += 1;
+        msg = `⚡ Расчистка завала! Открылся запасной отсек — мест в бункере стало больше (+1, всего ${room.bunkerSlots}).`;
+      } else if (act === "shrink_slot") {
+        room.bunkerSlots -= 1;
+        msg = `⚡ Обвал в жилом крыле! Часть отсека завалена — мест в бункере стало меньше (-1, всего ${room.bunkerSlots}).`;
+      } else if (act === "immunity_gift" && participants.length > 0) {
+        const target = pick(participants);
+        target.immunity = true;
+        msg = `⚡ Счастливый билет! Игрок ${target.name} нашёл пропуск и получил иммунитет на ближайшее голосование.`;
+      } else if (act === "double_vote_gift" && participants.length > 0) {
+        const target = pick(participants);
+        target.doubleVote = true;
+        msg = `⚡ Находка компромата! У игрока ${target.name} двойной голос на следующем голосовании.`;
+      } else if (act === "worsen_health" && participants.length > 0) {
+        const target = pick(participants);
+        const newH = generateDefaultHealth();
+        target.character.traits.health = newH;
+        target.character.revealed.health = true;
+        msg = `⚡ Вспышка инфекции в бункере! У ${target.name} ухудшилось здоровье: ${newH}.`;
+      } else if (act === "heal_player" && participants.length > 0) {
+        const target = pick(participants);
+        target.character.traits.health = "Полностью здоров (вылечен событием)";
+        target.character.revealed.health = true;
+        msg = `⚡ Неожиданное спасение! ${target.name} нашёл редкий антибиотик и полностью вылечился!`;
+      } else if (act === "break_luggage" && participants.length > 0) {
+        const target = pick(participants);
+        target.character.traits.bigLuggage = "Сломанный хлам (уничтожен аварией)";
+        target.character.revealed.bigLuggage = true;
+        msg = `⚡ Потоп в кладовой! У ${target.name} испорчен Большой багаж!`;
+      } else if (act === "new_phobia" && participants.length > 0) {
+        const target = pick(participants);
+        const ph = pick(DECKS.phobias);
+        target.character.traits.phobia = ph;
+        target.character.revealed.phobia = true;
+        msg = `⚡ Психологический срыв! У ${target.name} проявилась фобия: ${ph}.`;
+      } else if (act === "swap_backpacks" && participants.length >= 2) {
+        const pair = pickMultiple(participants, 2);
+        const tmp = pair[0].character.traits.backpack;
+        pair[0].character.traits.backpack = pair[1].character.traits.backpack;
+        pair[1].character.traits.backpack = tmp;
+        pair[0].character.revealed.backpack = true;
+        pair[1].character.revealed.backpack = true;
+        msg = `⚡ Перепутанные сумки! ${pair[0].name} и ${pair[1].name} обменялись рюкзаками (и они открылись на столе).`;
+      }
+
+      if (!msg) msg = pick(DECKS.events);
+      room.activeEvent = msg;
+      room.log.unshift(msg);
+      return msg;
+    }
+
+    function triggerRandomEvent(isAuto = false) {
+      const room = state.room;
+      if (!room || room.hostId !== CLIENT_ID) return;
+      applyRandomEvent(room);
+      saveRoomLocal(room);
+      showToast(isAuto ? "⚡ Внезапное событие в бункере!" : "Случайное событие сработало!", "warn");
+      render();
+    }
+
+    function formatElapsed(ms) {
+      const totalSec = Math.max(0, Math.floor(ms / 1000));
+      const h = Math.floor(totalSec / 3600);
+      const m = Math.floor((totalSec % 3600) / 60);
+      const sec = totalSec % 60;
+      const mm = (m < 10 ? "0" : "") + m;
+      const ss = (sec < 10 ? "0" : "") + sec;
+      return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
+    }
+
+    function toggleTimer() {
+      const room = state.room;
+      if (!room || room.hostId !== CLIENT_ID) return;
+      room.timer.running = !room.timer.running;
+      if (timerInterval) clearInterval(timerInterval);
+      if (room.timer.running) {
+        timerInterval = setInterval(() => {
+          if (!state.room || !state.room.timer.running) {
+            clearInterval(timerInterval);
+            return;
+          }
+          if (state.room.timer.seconds > 0) {
+            state.room.timer.seconds -= 1;
+            const el = document.getElementById("speech-timer-val");
+            if (el) el.textContent = formatTime(state.room.timer.seconds);
+            if (state.room.timer.seconds === 0) {
+              state.room.timer.running = false;
+              clearInterval(timerInterval);
+              showToast("Время выступления вышло!", "warn");
+              saveRoomLocal(state.room);
+              render();
+            }
+          }
+        }, 1000);
+      }
+      saveRoomLocal(room);
+      render();
+    }
+
+    function resetTimer(sec = 60) {
+      const room = state.room;
+      if (!room || room.hostId !== CLIENT_ID) return;
+      if (timerInterval) clearInterval(timerInterval);
+      room.timer.running = false;
+      room.timer.seconds = sec;
+      saveRoomLocal(room);
+      render();
+    }
+
+    function setSpeaker(pid) {
+      const room = state.room;
+      if (!room || room.hostId !== CLIENT_ID) return;
+      room.timer.speakerId = pid;
+      room.timer.seconds = 60;
+      room.timer.running = false;
+      if (timerInterval) clearInterval(timerInterval);
+      saveRoomLocal(room);
+      render();
+    }
+
+    function formatTime(sec) {
+      const m = Math.floor(sec / 60);
+      const s = sec % 60;
+      return `${m}:${s < 10 ? "0" : ""}${s}`;
+    }
+
+    function revealTrait(playerId, traitKey) {
+      const room = state.room;
+      const player = room.players.find(p => p.id === playerId);
+      if (!player || player.exiled || !player.character || player.character.revealed[traitKey]) return;
+
+      player.character.revealed[traitKey] = true;
+      const meta = TRAIT_META.find(t => t.key === traitKey);
+      room.log.unshift(`${player.name} открыл(а) «${meta.label}»: ${player.character.traits[traitKey]}`);
+
+      getPlayingParticipants(room).filter(p => p.isBot && !p.exiled).forEach(bot => {
+        const hiddenKeys = TRAIT_META.map(t => t.key).filter(k => !bot.character.revealed[k]);
+        if (hiddenKeys.length > 0 && Math.random() < 0.45) {
+          bot.character.revealed[pick(hiddenKeys)] = true;
+        }
+      });
+
+      if (room.hostId === CLIENT_ID && Math.random() < 0.22) {
+        applyRandomEvent(room);
+        showToast("⚡ Внезапное событие в бункере!", "warn");
+      }
+      saveRoomLocal(room);
+      showToast(`Открыто: «${meta.label}»`, "success");
+      render();
+    }
+
+    function getTraitAbility(type, val) {
+      const v = (val || "").toLowerCase();
+      if (type === "profession") {
+        if (v.includes("кукловод")) return { title: "Нити кукловода", desc: "Выберите игрока — он станет вашим заклятым врагом (в бункер пройдёт только один).", action: "rival" };
+        if (v.includes("пират")) return { title: "Абордаж", desc: "Забирает Рюкзак у выбранного игрока себе.", action: "steal_backpack" };
+        if (v.includes("шарлатан")) return { title: "Афера века", desc: "Забирает Большой багаж у выбранного игрока себе.", action: "steal_big" };
+        if (v.includes("вампир")) return { title: "Укус вампира", desc: "Омолаживает выбранного игрока (меняет возраст на 19 лет).", action: "vampire_bite" };
+        if (v.includes("хирург") || v.includes("медик") || v.includes("фармацевт")) return { title: "Полевая операция", desc: "Полностью излечивает выбранного игрока.", action: "heal_target" };
+        if (v.includes("палач") || v.includes("маньяк") || v.includes("ассасин") || v.includes("взломщик")) return { title: "Допрос", desc: "Принудительно открывает случайную закрытую карту выбранного игрока.", action: "reveal_target" };
+        if (v.includes("документовед")) return { title: "Архив", desc: "Раскрывает «Доп. сведение» выбранного игрока.", action: "reveal_fact" };
+        if (v.includes("нотариус")) return { title: "Печать нотариуса", desc: "Добавляет +1 дополнительный голос (двойной голос) на следующем голосовании.", action: "self_double_vote" };
+        if (v.includes("ортопед")) return { title: "Ортопедия", desc: "Снижает степень болезни выбранного игрока до «Легкая».", action: "soften_health" };
+        if (v.includes("пожарный")) return { title: "Экипировка", desc: "Добавляет вам в Большой багаж «Защитный костюм».", action: "add_suit" };
+        if (v.includes("парамедик")) return { title: "Реанимация", desc: "Возвращает изгнанного игрока обратно в игру!", action: "revive_exiled" };
+        if (v.includes("доярка")) return { title: "Ферма", desc: "Добавляет вам в Большой багаж живую «Корову».", action: "add_cow" };
+        if (v.includes("спортсмен")) return { title: "Прокачка", desc: "Меняет ваше телосложение на «Атлетическое».", action: "make_athletic" };
+      }
+      if (type === "hobby") {
+        if (v.includes("травничество") || v.includes("первая помощь") || v.includes("йога")) return { title: "Целебный отвар", desc: "Снижает степень болезни выбранного игрока до «Легкая».", action: "soften_health" };
+        if (v.includes("бинокль") || v.includes("wi-fi") || v.includes("сталкер") || v.includes("магия")) return { title: "Слежка", desc: "Подсматривает и открывает случайную закрытую карту выбранного игрока.", action: "reveal_target" };
+        if (v.includes("стрельба") || v.includes("ножей")) return { title: "Отжим", desc: "Забирает Рюкзак у выбранного игрока.", action: "steal_backpack" };
+      }
+      return null;
+    }
+
+    function useTraitAbility(playerId, type) {
+      const room = state.room;
+      const player = room.players.find(p => p.id === playerId);
+      if (!player || player.exiled || !player.character) return;
+      const usedKey = type === "profession" ? "profAbilityUsed" : "hobbyAbilityUsed";
+      if (player.character[usedKey]) return;
+
+      const ab = getTraitAbility(type, player.character.traits[type]);
+      if (!ab) return;
+
+      if (ab.action === "self_double_vote") {
+        player.doubleVote = true;
+        player.character[usedKey] = true;
+        player.character.revealed[type] = true;
+        const msg = `📜 ${player.name} (${ab.title}) заверил себе двойной голос на следующее голосование!`;
+        room.log.unshift(msg);
+        room.activeEvent = msg;
+        saveRoomLocal(room);
+        showToast("Двойной голос активирован!", "success");
+        render();
+        return;
+      }
+      if (ab.action === "add_cow") {
+        player.character.traits.bigLuggage = `${player.character.traits.bigLuggage} + Живая корова`;
+        player.character.revealed.bigLuggage = true;
+        player.character[usedKey] = true;
+        player.character.revealed[type] = true;
+        const msg = `🐄 ${player.name} (${ab.title}) привёл в бункер живую корову!`;
+        room.log.unshift(msg);
+        room.activeEvent = msg;
+        saveRoomLocal(room);
+        showToast("Корова добавлена в Большой багаж!", "success");
+        render();
+        return;
+      }
+      if (ab.action === "make_athletic") {
+        const hPart = player.character.traits.body.includes(",") ? player.character.traits.body.slice(player.character.traits.body.indexOf(",")) : "";
+        player.character.traits.body = `Атлетическое${hPart}`;
+        player.character.revealed.body = true;
+        player.character[usedKey] = true;
+        player.character.revealed[type] = true;
+        const msg = `💪 ${player.name} (${ab.title}) стал Атлетического телосложения!`;
+        room.log.unshift(msg);
+        room.activeEvent = msg;
+        saveRoomLocal(room);
+        showToast("Телосложение изменено на Атлетическое!", "success");
+        render();
+        return;
+      }
+      if (ab.action === "revive_exiled") {
+        const exiledList = getPlayingParticipants(room).filter(p => p.exiled);
+        if (exiledList.length === 0) {
+          showToast("Пока нет изгнанных игроков для возврата", "warn");
+          return;
+        }
+        openModal(`
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-lg font-bold text-white">🩺 ${ab.title}</h3>
+            <button onclick="closeModal()" class="text-bunker-muted hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+          </div>
+          <p class="text-sm text-bunker-muted mb-4">Выберите изгнанного игрока, чтобы вернуть его обратно в бункер:</p>
+          <div class="space-y-2">
+            ${exiledList.map(t => `
+              <button onclick="applyTraitAbilityTarget('${playerId}', '${type}', '${t.id}')" class="w-full text-left px-4 py-3 rounded-xl bg-bunker-card hover:bg-bunker-border border border-bunker-border text-sm font-medium flex items-center justify-between transition">
+                <span>${t.name}</span>
+                <span class="text-xs text-emerald-400">Вернуть в игру</span>
+              </button>
+            `).join("")}
+          </div>
+        `);
+        return;
+      }
+      if (ab.action === "add_suit") {
+        player.character.traits.bigLuggage = `${player.character.traits.bigLuggage} + Защитный костюм`;
+        player.character.revealed.bigLuggage = true;
+        player.character[usedKey] = true;
+        player.character.revealed[type] = true;
+        const msg = `🚒 ${player.name} (${ab.title}) добавил себе в Большой багаж «Защитный костюм»!`;
+        room.log.unshift(msg);
+        room.activeEvent = msg;
+        saveRoomLocal(room);
+        showToast("Защитный костюм добавлен!", "success");
+        render();
+        return;
+      }
+
+      const targets = getPlayingParticipants(room).filter(p => !p.exiled && p.id !== playerId);
+      if (targets.length === 0) return;
+
+      openModal(`
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-lg font-bold text-white flex items-center gap-2">
+            <i data-lucide="zap" class="w-5 h-5 text-amber-400"></i>
+            ${ab.title}
+          </h3>
+          <button onclick="closeModal()" class="text-bunker-muted hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+        </div>
+        <p class="text-sm text-bunker-muted mb-4">${ab.desc}</p>
+        <div class="space-y-2">
+          ${targets.map(t => `
+            <button onclick="applyTraitAbilityTarget('${playerId}', '${type}', '${t.id}')" class="w-full text-left px-4 py-3 rounded-xl bg-bunker-card hover:bg-bunker-border border border-bunker-border text-sm font-medium flex items-center justify-between transition">
+              <span>${t.name}</span>
+              <span class="text-xs text-amber-400">Применить</span>
+            </button>
+          `).join("")}
+        </div>
+      `);
+    }
+
+    function applyTraitAbilityTarget(playerId, type, targetId) {
+      const room = state.room;
+      const player = room.players.find(p => p.id === playerId);
+      const target = room.players.find(p => p.id === targetId);
+      if (!player || !target) return;
+
+      const ab = getTraitAbility(type, player.character.traits[type]);
+      const usedKey = type === "profession" ? "profAbilityUsed" : "hobbyAbilityUsed";
+      closeModal();
+
+      if (ab.action === "rival") {
+        player.rivalName = target.name;
+        target.rivalName = player.name;
+        room.log.unshift(`⚔️ ${player.name} (${ab.title}) сделал ${target.name} своим врагом — в бункер пройдёт только один!`);
+        showToast(`${target.name} теперь ваш враг!`, "warn");
+      } else if (ab.action === "steal_backpack") {
+        const stolen = target.character.traits.backpack;
+        player.character.traits.backpack = `${player.character.traits.backpack} + ${stolen}`;
+        target.character.traits.backpack = "Пусто (ограблен)";
+        player.character.revealed.backpack = true;
+        target.character.revealed.backpack = true;
+        room.log.unshift(`🏴‍☠️ ${player.name} (${ab.title}) забрал рюкзак у ${target.name}: ${stolen}!`);
+        showToast(`Вы забрали рюкзак у ${target.name}!`, "success");
+      } else if (ab.action === "steal_big") {
+        const stolen = target.character.traits.bigLuggage;
+        player.character.traits.bigLuggage = stolen;
+        target.character.traits.bigLuggage = "Пусто (украдено)";
+        player.character.revealed.bigLuggage = true;
+        target.character.revealed.bigLuggage = true;
+        room.log.unshift(`🎭 ${player.name} (${ab.title}) украл Большой багаж у ${target.name}: ${stolen}!`);
+        showToast(`Вы украли багаж у ${target.name}!`, "success");
+      } else if (ab.action === "vampire_bite") {
+        const gBase = target.character.traits.gender.split(",")[0].trim();
+        target.character.traits.gender = `${gBase}, 19 лет (укушен вампиром)`;
+        target.character.revealed.gender = true;
+        room.log.unshift(`🧛 ${player.name} укусил ${target.name} — теперь ему 19 лет!`);
+        showToast(`${target.name} омолодился до 19 лет!`, "success");
+      } else if (ab.action === "heal_target") {
+        target.character.traits.health = "Полностью здоров (вылечен)";
+        target.character.revealed.health = true;
+        room.log.unshift(`🩺 ${player.name} (${ab.title}) полностью вылечил ${target.name}!`);
+        showToast(`${target.name} теперь полностью здоров!`, "success");
+      } else if (ab.action === "soften_health") {
+        const h = target.character.traits.health;
+        if (!h.includes("Полностью здоров")) {
+          const base = h.split("(")[0].trim();
+          target.character.traits.health = `${base} (Легкая)`;
+          target.character.revealed.health = true;
+        }
+        room.log.unshift(`🌿 ${player.name} (${ab.title}) облегчил болезнь у ${target.name}!`);
+        showToast(`Болезнь ${target.name} снижена до лёгкой!`, "success");
+      } else if (ab.action === "revive_exiled") {
+        target.exiled = false;
+        room.log.unshift(`🩺 ${player.name} (Парамедик) реанимировал и вернул в игру ${target.name}!`);
+        showToast(`${target.name} возвращён в игру!`, "success");
+      } else if (ab.action === "reveal_fact") {
+        target.character.revealed.fact = true;
+        room.log.unshift(`📂 ${player.name} (${ab.title}) раскрыл Доп. сведение у ${target.name}: ${target.character.traits.fact}`);
+        showToast(`У ${target.name} открыто Доп. сведение!`, "success");
+      } else if (ab.action === "reveal_target") {
+        const hidden = TRAIT_META.map(m => m.key).filter(k => !target.character.revealed[k]);
+        if (hidden.length > 0) {
+          const k = pick(hidden);
+          target.character.revealed[k] = true;
+          const label = TRAIT_META.find(m => m.key === k).label;
+          room.log.unshift(`🔍 ${player.name} (${ab.title}) раскрыл карту «${label}» у ${target.name}: ${target.character.traits[k]}`);
+          showToast(`У ${target.name} открыто: ${label}`, "success");
+        }
+      }
+
+      room.activeEvent = room.log[0];
+      player.character[usedKey] = true;
+      player.character.revealed[type] = true;
+      saveRoomLocal(room);
+      render();
+    }
+
+    function useSpecialCard(playerId, idx) {
+      const room = state.room;
+      const player = room.players.find(p => p.id === playerId);
+      if (!player || player.exiled || !player.character) return;
+      const card = player.character.specials[idx];
+      if (!card || card.used) return;
+      const aliveOthers = getPlayingParticipants(room).filter(p => !p.exiled && p.id !== playerId);
+
+      if (card.actionType === "self_heal") {
+        player.character.traits.health = "Полностью здоров (вылечен)";
+        player.character.revealed.health = true;
+        card.used = true;
+        room.log.unshift(`${player.name} использовал(а) «${card.title}»!`);
+        saveRoomLocal(room);
+        showToast("Здоровье восстановлено!", "success");
+        render();
+      } else if (card.actionType === "reroll_prof") {
+        player.character.traits.profession = `${pick(DECKS.professions)} (${pick(PROF_EXP)})`;
+        player.character.revealed.profession = true;
+        card.used = true;
+        room.log.unshift(`${player.name} сменил(а) профессию!`);
+        saveRoomLocal(room);
+        showToast("Профессия изменена!", "success");
+        render();
+      } else if (card.actionType === "reroll_health") {
+        player.character.traits.health = generateDefaultHealth();
+        player.character.revealed.health = true;
+        card.used = true;
+        room.log.unshift(`${player.name} обновил(а) здоровье!`);
+        saveRoomLocal(room);
+        showToast("Карта здоровья обновлена!", "success");
+        render();
+      } else if (card.actionType === "double_vote") {
+        player.doubleVote = true;
+        card.used = true;
+        room.log.unshift(`${player.name} активировал(а) двойной голос!`);
+        saveRoomLocal(room);
+        showToast("Двойной голос активирован!", "success");
+        render();
+      } else if (card.actionType === "immunity") {
+        player.immunity = true;
+        card.used = true;
+        room.log.unshift(`${player.name} получил(а) иммунитет на раунд!`);
+        saveRoomLocal(room);
+        showToast("Иммунитет активирован!", "success");
+        render();
+      } else if (card.actionType === "shrink_slot") {
+        if (room.bunkerSlots > 1) room.bunkerSlots -= 1;
+        card.used = true;
+        room.log.unshift(`${player.name} уменьшил(а) бункер на -1 место (теперь ${room.bunkerSlots}).`);
+        saveRoomLocal(room);
+        showToast(`Мест в бункере стало меньше: ${room.bunkerSlots}`, "warn");
+        render();
+      } else if (card.actionType === "orator_all") {
+        getPlayingParticipants(room).filter(p => !p.exiled && p.character).forEach(p => {
+          p.character.traits.fact = `${p.character.traits.fact} + Курс ораторского мастерства`;
+          p.character.revealed.fact = true;
+        });
+        card.used = true;
+        room.log.unshift(`${player.name} применил(а) «Курс ораторского мастерства» для всех игроков!`);
+        saveRoomLocal(room);
+        showToast("Все игроки получили курс ораторского мастерства!", "success");
+        render();
+      } else if (card.actionType === "reveal_all_phobias") {
+        getPlayingParticipants(room).filter(p => !p.exiled && p.character).forEach(p => {
+          p.character.revealed.phobia = true;
+        });
+        card.used = true;
+        room.log.unshift(`${player.name} вызвал(а) «Групповую панику» — у всех открыты Фобии!`);
+        saveRoomLocal(room);
+        showToast("У всех игроков открыты фобии!", "warn");
+        render();
+      } else if (card.actionType === "add_slot") {
+        const maxSlots = getPlayingParticipants(room).length - 1;
+        room.bunkerSlots = Math.min(maxSlots, room.bunkerSlots + 1);
+        card.used = true;
+        room.log.unshift(`${player.name} расширил(а) бункер (+1 место)!`);
+        saveRoomLocal(room);
+        showToast("Вместимость бункера увеличена на +1!", "success");
+        render();
+      } else if (card.actionType === "custom_phobia") {
+        openModal(`
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-lg font-bold text-white">${card.title}</h3>
+            <button onclick="closeModal()" class="text-bunker-muted hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+          </div>
+          <p class="text-sm text-bunker-muted mb-4">${card.desc}</p>
+          <div class="space-y-3 mb-4">
+            <div>
+              <label class="block text-xs text-gray-300 mb-1">Ваша новая фобия / страх</label>
+              <input id="cp-text" type="text" placeholder="Например: Боязнь ящика копчёной колбасы" class="w-full px-3 py-2.5 rounded-xl bg-bunker-bg border border-bunker-border text-sm text-white">
+            </div>
+            <label class="flex items-center gap-2 text-xs text-gray-300 cursor-pointer">
+              <input id="cp-reveal" type="checkbox" checked class="rounded bg-bunker-bg border-bunker-border text-amber-500">
+              Сразу открыть для всех на общем столе
+            </label>
+          </div>
+          <button onclick="applyCustomPhobia('${playerId}', ${idx})" class="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold text-sm transition">
+            Изменить фобию
+          </button>
+        `);
+      } else if (card.actionType === "custom_fact_target") {
+        if (aliveOthers.length === 0) return;
+        openModal(`
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-lg font-bold text-white">${card.title}</h3>
+            <button onclick="closeModal()" class="text-bunker-muted hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+          </div>
+          <p class="text-sm text-bunker-muted mb-4">${card.desc}</p>
+          <div class="space-y-3 mb-4">
+            <select id="cft-target" class="w-full px-3 py-2.5 rounded-xl bg-bunker-bg border border-bunker-border text-sm text-white">
+              ${aliveOthers.map(t => `<option value="${t.id}">${t.name}</option>`).join("")}
+            </select>
+            <input id="cft-text" type="text" placeholder="Например: Он на самом деле киборг" class="w-full px-3 py-2.5 rounded-xl bg-bunker-bg border border-bunker-border text-sm text-white">
+          </div>
+          <button onclick="applyCustomFactTarget('${playerId}', ${idx})" class="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold text-sm">Применить</button>
+        `);
+      } else if (card.actionType === "d20_fact" || card.actionType === "d20_steal") {
+        const needsTarget = card.actionType === "d20_steal";
+        if (needsTarget && aliveOthers.length === 0) return;
+        openModal(`
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-lg font-bold text-white flex items-center gap-2">
+              <i data-lucide="dices" class="w-5 h-5 text-amber-400"></i>
+              ${card.title}
+            </h3>
+            <button onclick="closeModal()" class="text-bunker-muted hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+          </div>
+          <p class="text-sm text-bunker-muted mb-4">${card.desc}</p>
+          ${needsTarget ? `
+            <div class="mb-4">
+              <label class="block text-xs text-gray-300 mb-1">У кого крадём?</label>
+              <select id="d20-target" class="w-full px-3 py-2.5 rounded-xl bg-bunker-bg border border-bunker-border text-sm text-white">
+                ${aliveOthers.map(t => `<option value="${t.id}">${t.name}</option>`).join("")}
+              </select>
+            </div>
+          ` : ''}
+          <div class="text-xs font-semibold text-gray-300 mb-2">Выберите ставку и бросьте d20:</div>
+          <div class="grid grid-cols-2 gap-3">
+            <button onclick="rollD20Special('${playerId}', ${idx}, 'even')" class="py-3.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold text-sm transition">Чётное</button>
+            <button onclick="rollD20Special('${playerId}', ${idx}, 'odd')" class="py-3.5 rounded-xl bg-bunker-card hover:bg-bunker-border border border-amber-500/40 text-amber-300 font-bold text-sm transition">Нечётное</button>
+          </div>
+        `);
+      } else if (card.actionType === "add_custom_item") {
+        openModal(`
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-lg font-bold text-white">${card.title}</h3>
+            <button onclick="closeModal()" class="text-bunker-muted hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+          </div>
+          <p class="text-sm text-bunker-muted mb-4">${card.desc}</p>
+          <div class="space-y-3 mb-4">
+            <div>
+              <label class="block text-xs text-gray-300 mb-1">Куда добавить?</label>
+              <select id="ci-slot" class="w-full px-3 py-2.5 rounded-xl bg-bunker-bg border border-bunker-border text-sm text-white">
+                <option value="backpack">Рюкзак</option>
+                <option value="bigLuggage">Большой багаж</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs text-gray-300 mb-1">Название предмета</label>
+              <input id="ci-text" type="text" placeholder="Например: Генератор или аптечка" class="w-full px-3 py-2.5 rounded-xl bg-bunker-bg border border-bunker-border text-sm text-white">
+            </div>
+            <label class="flex items-center gap-2 text-xs text-gray-300 cursor-pointer">
+              <input id="ci-reveal" type="checkbox" checked class="rounded bg-bunker-bg border-bunker-border text-amber-500">
+              Сразу открыть для всех
+            </label>
+          </div>
+          <button onclick="applyCustomItem('${playerId}', ${idx})" class="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold text-sm transition">
+            Добавить предмет
+          </button>
+        `);
+      } else if (card.actionType === "force_reveal" || card.actionType === "swap_big_luggage" || card.actionType === "swap_prof" || card.actionType === "swap_health" || card.actionType === "heal_other" || card.actionType === "infect_other" || card.actionType === "strip_immunity" || card.actionType === "werewolf_bite" || card.actionType === "give_phobia" || card.actionType === "change_health_deg" || card.actionType === "flip_gender" || card.actionType === "make_childfree" || card.actionType === "remove_childfree" || card.actionType === "swap_body") {
+        if (aliveOthers.length === 0) return;
+        openModal(`
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-lg font-bold text-white">${card.title}</h3>
+            <button onclick="closeModal()" class="text-bunker-muted hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+          </div>
+          <p class="text-sm text-bunker-muted mb-4">${card.desc}</p>
+          <div class="space-y-2">
+            ${aliveOthers.map(t => `
+              <button onclick="applyTargetSpecial('${playerId}', ${idx}, '${t.id}')" class="w-full text-left px-4 py-3 rounded-xl bg-bunker-card hover:bg-bunker-border border border-bunker-border text-sm font-medium flex items-center justify-between transition">
+                <span>${t.name}</span>
+                <span class="text-xs text-amber-400">Выбрать</span>
+              </button>
+            `).join("")}
+          </div>
+        `);
+      }
+    }
+
+    function openFreeDiceModal() {
+      openModal(`
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-lg font-bold text-white flex items-center gap-2">
+            <i data-lucide="dices" class="w-5 h-5 text-amber-400"></i>
+            Бросок кубика для всех
+          </h3>
+          <button onclick="closeModal()" class="text-bunker-muted hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+        </div>
+        <p class="text-xs text-bunker-muted mb-4">Результат броска сразу увидят все игроки в комнате — для споров, проверок удачи и отыгрыша.</p>
+        <div class="grid grid-cols-2 gap-2.5 mb-3">
+          <button onclick="rollFreeDice(6)" class="py-3.5 rounded-xl bg-bunker-card hover:bg-amber-500 hover:text-black border border-bunker-border font-mono font-bold text-sm transition">🎲 d6 (1–6)</button>
+          <button onclick="rollFreeDice(10)" class="py-3.5 rounded-xl bg-bunker-card hover:bg-amber-500 hover:text-black border border-bunker-border font-mono font-bold text-sm transition">🎲 d10 (1–10)</button>
+          <button onclick="rollFreeDice(20)" class="py-3.5 rounded-xl bg-amber-500/15 hover:bg-amber-500 hover:text-black border border-amber-500/40 text-amber-300 font-mono font-bold text-sm transition">🎲 d20 (1–20)</button>
+          <button onclick="rollFreeDice(100)" class="py-3.5 rounded-xl bg-bunker-card hover:bg-amber-500 hover:text-black border border-bunker-border font-mono font-bold text-sm transition">🎲 d100 (1–100)</button>
+        </div>
+        <button onclick="rollFreeCoin()" class="w-full py-3 rounded-xl bg-bunker-surface hover:bg-bunker-border border border-bunker-border text-sm font-semibold text-gray-200 transition">🪙 Подбросить монетку (Орёл / Решка)</button>
+      `);
+    }
+
+    function rollFreeDice(sides) {
+      const room = state.room;
+      if (!room) return;
+      const actor = room.players.find(p => p.id === state.viewingPlayerId) || room.players.find(p => p.id === CLIENT_ID) || { name: "Игрок" };
+      const val = Math.floor(1 + Math.random() * sides);
+      const parity = val % 2 === 0 ? "Чётное" : "Нечётное";
+      const msg = `🎲 ${actor.name} бросил(а) d${sides} — выпало ${val} (${parity})`;
+      room.activeEvent = msg;
+      room.log.unshift(msg);
+      closeModal();
+      saveRoomLocal(room);
+      showToast(`d${sides}: выпало ${val}!`, "info");
+      render();
+    }
+
+    function rollFreeCoin() {
+      const room = state.room;
+      if (!room) return;
+      const actor = room.players.find(p => p.id === state.viewingPlayerId) || room.players.find(p => p.id === CLIENT_ID) || { name: "Игрок" };
+      const res = Math.random() < 0.5 ? "Орёл" : "Решка";
+      const msg = `🪙 ${actor.name} подбросил(а) монетку — выпало: ${res}!`;
+      room.activeEvent = msg;
+      room.log.unshift(msg);
+      closeModal();
+      saveRoomLocal(room);
+      showToast(`Монетка: ${res}!`, "info");
+      render();
+    }
+
+    function rollD20Special(playerId, idx, guess) {
+      const room = state.room;
+      const player = room.players.find(p => p.id === playerId);
+      const card = player.character.specials[idx];
+      const roll = Math.floor(1 + Math.random() * 20);
+      const isEven = roll % 2 === 0;
+      const won = (guess === "even" && isEven) || (guess === "odd" && !isEven);
+      const guessLabel = guess === "even" ? "Чётное" : "Нечётное";
+
+      let msg = "";
+      if (card.actionType === "d20_fact") {
+        if (won) {
+          const newFact = pick(DECKS.facts);
+          player.character.traits.fact = `${player.character.traits.fact} + ${newFact}`;
+          player.character.revealed.fact = true;
+          msg = `🎲 ${player.name} поставил на ${guessLabel}, выпало ${roll}! Успех — добавлено Доп. сведение: ${newFact}`;
+        } else {
+          msg = `🎲 ${player.name} поставил на ${guessLabel}, выпало ${roll}. Не угадал — карта сгорела!`;
+        }
+      } else if (card.actionType === "d20_steal") {
+        const targetId = document.getElementById("d20-target").value;
+        const target = room.players.find(p => p.id === targetId);
+        if (won && target) {
+          const stolen = target.character.traits.bigLuggage;
+          player.character.traits.bigLuggage = stolen;
+          target.character.traits.bigLuggage = "Пусто (украдено через d20)";
+          player.character.revealed.bigLuggage = true;
+          target.character.revealed.bigLuggage = true;
+          msg = `🎲 ${player.name} поставил на ${guessLabel}, выпало ${roll}! Успех — забрал Большой багаж у ${target.name}: ${stolen}`;
+        } else {
+          msg = `🎲 ${player.name} поставил на ${guessLabel}, выпало ${roll}. Кража у ${target ? target.name : 'игрока'} провалилась!`;
+        }
+      }
+
+      card.used = true;
+      room.log.unshift(msg);
+      room.activeEvent = msg;
+      closeModal();
+      saveRoomLocal(room);
+      showToast(`Выпало ${roll} — ${won ? 'Успех!' : 'Мимо!'}`, won ? "success" : "warn");
+      render();
+    }
+
+    function applyCustomPhobia(playerId, idx) {
+      const room = state.room;
+      const player = room.players.find(p => p.id === playerId);
+      const card = player.character.specials[idx];
+      const txt = document.getElementById("cp-text").value.trim();
+      const reveal = document.getElementById("cp-reveal").checked;
+      if (!txt) { showToast("Введите новую фобию", "warn"); return; }
+
+      player.character.traits.phobia = txt;
+      if (reveal) player.character.revealed.phobia = true;
+      card.used = true;
+      const msg = `😱 ${player.name} изменил(а) свою фобию на: «${txt}»!`;
+      room.log.unshift(msg);
+      room.activeEvent = msg;
+      closeModal();
+      saveRoomLocal(room);
+      showToast(`Новая фобия: ${txt}`, "success");
+      render();
+    }
+
+    function applyCustomFactTarget(playerId, idx) {
+      const room = state.room;
+      const player = room.players.find(p => p.id === playerId);
+      const card = player.character.specials[idx];
+      const targetId = document.getElementById("cft-target").value;
+      const target = room.players.find(p => p.id === targetId);
+      const txt = document.getElementById("cft-text").value.trim();
+      if (!txt || !target) { showToast("Введите факт", "warn"); return; }
+
+      target.character.traits.fact = txt;
+      target.character.revealed.fact = true;
+      card.used = true;
+      const msg = `🕵️ ${player.name} раскрыл секретное досье на ${target.name}: «${txt}»!`;
+      room.log.unshift(msg);
+      room.activeEvent = msg;
+      closeModal();
+      saveRoomLocal(room);
+      showToast(`Факт у ${target.name} изменён!`, "success");
+      render();
+    }
+
+    function applyCustomItem(playerId, idx) {
+      const room = state.room;
+      const player = room.players.find(p => p.id === playerId);
+      const card = player.character.specials[idx];
+      const slot = document.getElementById("ci-slot").value;
+      const text = document.getElementById("ci-text").value.trim();
+      const reveal = document.getElementById("ci-reveal").checked;
+      if (!text) { showToast("Введите название предмета", "warn"); return; }
+
+      const prev = player.character.traits[slot];
+      player.character.traits[slot] = prev ? `${prev} + ${text}` : text;
+      if (reveal) player.character.revealed[slot] = true;
+      card.used = true;
+      room.log.unshift(`${player.name} добавил(а) предмет: ${text}`);
+      closeModal();
+      saveRoomLocal(room);
+      showToast(`Предмет «${text}» добавлен!`, "success");
+      render();
+    }
+
+    function openHostEditPlayerModal(playerId) {
+      const room = state.room;
+      if (!room || room.hostId !== CLIENT_ID) return;
+      const player = room.players.find(p => p.id === playerId);
+      if (!player || !player.character) return;
+
+      const options = TRAIT_META.map(m => `<option value="${m.key}">${m.label}: ${player.character.traits[m.key]}</option>`).join("");
+      openModal(`
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-lg font-bold text-white flex items-center gap-2">
+            <i data-lucide="wrench" class="w-5 h-5 text-amber-400"></i>
+            Ведущий: ${player.name}
+          </h3>
+          <button onclick="closeModal()" class="text-bunker-muted hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+        </div>
+        <div class="space-y-3 mb-4">
+          <div>
+            <label class="block text-xs text-gray-300 mb-1">Характеристика</label>
+            <select id="he-trait" class="w-full px-3 py-2.5 rounded-xl bg-bunker-bg border border-bunker-border text-xs sm:text-sm text-white">${options}</select>
+          </div>
+          <div>
+            <label class="block text-xs text-gray-300 mb-1">Действие</label>
+            <select id="he-mode" class="w-full px-3 py-2.5 rounded-xl bg-bunker-bg border border-bunker-border text-xs sm:text-sm text-white">
+              <option value="append">Добавить к текущему (+ предмет/факт)</option>
+              <option value="replace">Заменить полностью</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs text-gray-300 mb-1">Текст / Предмет</label>
+            <input id="he-value" type="text" placeholder="Например: Противогаз" class="w-full px-3 py-2.5 rounded-xl bg-bunker-bg border border-bunker-border text-sm text-white">
+          </div>
+          <label class="flex items-center gap-2 text-xs text-gray-300 cursor-pointer">
+            <input id="he-reveal" type="checkbox" checked class="rounded bg-bunker-bg border-bunker-border text-amber-500">
+            Открыть на общем столе
+          </label>
+        </div>
+        <div class="flex gap-2">
+          <button onclick="saveHostPlayerEdit('${playerId}')" class="flex-1 py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold text-sm">Применить</button>
+          <button onclick="toggleExileHost('${playerId}')" class="px-4 py-3 rounded-xl bg-red-500/15 hover:bg-red-500/25 border border-red-500/30 text-red-300 font-semibold text-xs">
+            ${player.exiled ? 'Вернуть в игру' : 'Изгнать'}
+          </button>
+        </div>
+      `);
+    }
+
+    function toggleExileHost(playerId) {
+      const room = state.room;
+      const p = room.players.find(x => x.id === playerId);
+      if (!p) return;
+      p.exiled = !p.exiled;
+      room.log.unshift(`Ведущий ${p.exiled ? 'изгнал' : 'вернул в игру'}: ${p.name}`);
+      closeModal();
+      saveRoomLocal(room);
+      render();
+    }
+
+    function saveHostPlayerEdit(playerId) {
+      const room = state.room;
+      const player = room.players.find(p => p.id === playerId);
+      const key = document.getElementById("he-trait").value;
+      const mode = document.getElementById("he-mode").value;
+      const val = document.getElementById("he-value").value.trim();
+      const reveal = document.getElementById("he-reveal").checked;
+      if (!val) { showToast("Введите значение", "warn"); return; }
+
+      player.character.traits[key] = mode === "append" ? `${player.character.traits[key]} + ${val}` : val;
+      if (reveal) player.character.revealed[key] = true;
+      room.log.unshift(`Ведущий обновил «${TRAIT_META.find(t=>t.key===key).label}» у ${player.name}: ${val}`);
+      closeModal();
+      saveRoomLocal(room);
+      showToast(`Обновлено у ${player.name}`, "success");
+      render();
+    }
+
+    function openHostAddBunkerItemModal() {
+      const room = state.room;
+      if (!room || room.hostId !== CLIENT_ID) return;
+      openModal(`
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-lg font-bold text-white">Добавить предмет в бункер</h3>
+          <button onclick="closeModal()" class="text-bunker-muted hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+        </div>
+        <input id="hb-item" type="text" placeholder="Например: Генератор или аптечка" class="w-full px-3 py-2.5 rounded-xl bg-bunker-bg border border-bunker-border text-sm text-white mb-4">
+        <button onclick="saveHostBunkerItem()" class="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold text-sm">Добавить в бункер</button>
+      `);
+    }
+
+    function saveHostBunkerItem() {
+      const room = state.room;
+      const val = document.getElementById("hb-item").value.trim();
+      if (!val) { showToast("Введите название", "warn"); return; }
+      room.bunker.features.push(val);
+      room.log.unshift(`Ведущий добавил в бункер: ${val}`);
+      closeModal();
+      saveRoomLocal(room);
+      showToast(`Добавлено в бункер: ${val}`, "success");
+      render();
+    }
+
+    function applyTargetSpecial(playerId, idx, targetId) {
+      const room = state.room;
+      const player = room.players.find(p => p.id === playerId);
+      const target = room.players.find(p => p.id === targetId);
+      const card = player.character.specials[idx];
+      closeModal();
+
+      if (card.actionType === "force_reveal") {
+        const hidden = TRAIT_META.map(t => t.key).filter(k => !target.character.revealed[k]);
+        if (hidden.length > 0) {
+          const k = pick(hidden);
+          target.character.revealed[k] = true;
+          const label = TRAIT_META.find(t => t.key === k).label;
+          room.log.unshift(`${player.name} раскрыл(а) «${label}» у ${target.name}`);
+          showToast(`У ${target.name} открыто: «${label}»`, "success");
+        }
+      } else if (card.actionType === "swap_big_luggage") {
+        const tmp = player.character.traits.bigLuggage;
+        player.character.traits.bigLuggage = target.character.traits.bigLuggage;
+        target.character.traits.bigLuggage = tmp;
+        player.character.revealed.bigLuggage = true;
+        target.character.revealed.bigLuggage = true;
+        room.log.unshift(`${player.name} обменялся Большим багажом с ${target.name}`);
+        showToast(`Обмен Большим багажом с ${target.name}`, "success");
+      } else if (card.actionType === "swap_prof" || card.actionType === "swap_health" || card.actionType === "heal_other" || card.actionType === "infect_other" || card.actionType === "strip_immunity" || card.actionType === "werewolf_bite" || card.actionType === "give_phobia" || card.actionType === "change_health_deg" || card.actionType === "flip_gender" || card.actionType === "make_childfree" || card.actionType === "remove_childfree" || card.actionType === "swap_body") {
+        const tmp = player.character.traits.profession;
+        player.character.traits.profession = target.character.traits.profession;
+        target.character.traits.profession = tmp;
+        player.character.revealed.profession = true;
+        target.character.revealed.profession = true;
+        room.log.unshift(`${player.name} обменялся профессией с ${target.name}!`);
+        showToast(`Вы обменялись профессией с ${target.name}`, "success");
+      } else if (card.actionType === "swap_health") {
+        const tmp = player.character.traits.health;
+        player.character.traits.health = target.character.traits.health;
+        target.character.traits.health = tmp;
+        player.character.revealed.health = true;
+        target.character.revealed.health = true;
+        room.log.unshift(`${player.name} обменялся здоровьем с ${target.name}!`);
+        showToast(`Обмен здоровьем с ${target.name}`, "success");
+      } else if (card.actionType === "heal_other") {
+        target.character.traits.health = "Полностью здоров (вылечен вакциной)";
+        target.character.revealed.health = true;
+        room.log.unshift(`${player.name} вылечил(а) игрока ${target.name}!`);
+        showToast(`${target.name} полностью здоров!`, "success");
+      } else if (card.actionType === "infect_other") {
+        const newH = generateDefaultHealth();
+        target.character.traits.health = newH;
+        target.character.revealed.health = true;
+        room.log.unshift(`${player.name} заразил(а) ${target.name}: ${newH}!`);
+        showToast(`У ${target.name} новая болезнь!`, "warn");
+      } else if (card.actionType === "strip_immunity" || card.actionType === "werewolf_bite" || card.actionType === "give_phobia" || card.actionType === "change_health_deg" || card.actionType === "flip_gender" || card.actionType === "make_childfree" || card.actionType === "remove_childfree" || card.actionType === "swap_body") {
+        target.immunity = false;
+        const hidden = TRAIT_META.map(t => t.key).filter(k => !target.character.revealed[k]);
+        if (hidden.length > 0) target.character.revealed[pick(hidden)] = true;
+        room.log.unshift(`${player.name} применил(а) «Компромат» на ${target.name}!`);
+        showToast(`Компромат на ${target.name} сработал!`, "warn");
+      } else if (card.actionType === "werewolf_bite") {
+        target.character.traits.fact = `${target.character.traits.fact} + Укушен оборотнем!`;
+        target.character.revealed.fact = true;
+        room.log.unshift(`${player.name} натравил(а) оборотня на ${target.name}!`);
+        showToast(`${target.name} укушен оборотнем!`, "warn");
+      } else if (card.actionType === "give_phobia") {
+        const np = pick(DECKS.phobias);
+        target.character.traits.phobia = np;
+        target.character.revealed.phobia = true;
+        room.log.unshift(`${player.name} навязал(а) фобию игроку ${target.name}: ${np}!`);
+        showToast(`У ${target.name} новая фобия!`, "warn");
+      } else if (card.actionType === "change_health_deg" || card.actionType === "flip_gender" || card.actionType === "make_childfree" || card.actionType === "remove_childfree" || card.actionType === "swap_body") {
+        const h = target.character.traits.health;
+        if (!h.includes("Полностью здоров")) {
+          const base = h.split("(")[0].trim();
+          target.character.traits.health = `${base} (${pick(HEALTH_DEG)})`;
+        } else {
+          target.character.traits.health = generateDefaultHealth();
+        }
+        target.character.revealed.health = true;
+        room.log.unshift(`${player.name} изменил(а) здоровье игрока ${target.name}: ${target.character.traits.health}`);
+        showToast(`Здоровье ${target.name} изменено!`, "warn");
+      } else if (card.actionType === "flip_gender" || card.actionType === "make_childfree" || card.actionType === "remove_childfree" || card.actionType === "swap_body") {
+        const g = target.character.traits.gender;
+        const rest = g.includes(",") ? g.slice(g.indexOf(",")) : "";
+        const nextG = g.toLowerCase().includes("муж") ? "Женщина" : "Мужчина";
+        target.character.traits.gender = nextG + rest;
+        target.character.revealed.gender = true;
+        room.log.unshift(`${player.name} сменил(а) пол игроку ${target.name}: теперь ${target.character.traits.gender}!`);
+        showToast(`${target.name} сменил(а) пол!`, "warn");
+      } else if (card.actionType === "make_childfree") {
+        if (!target.character.traits.gender.includes("чайлдфри")) {
+          target.character.traits.gender = `${target.character.traits.gender} (чайлдфри)`;
+        }
+        target.character.revealed.gender = true;
+        room.log.unshift(`🚫 ${player.name} сделал(а) ${target.name} чайлдфри!`);
+        showToast(`${target.name} теперь чайлдфри!`, "warn");
+      } else if (card.actionType === "remove_childfree" || card.actionType === "swap_body") {
+        target.character.traits.gender = target.character.traits.gender.replace(/\s*\(чайлдфри\)/gi, "").trim();
+        target.character.revealed.gender = true;
+        room.log.unshift(`👶 ${player.name} снял(а) статус чайлдфри с ${target.name}!`);
+        showToast(`Статус чайлдфри снят с ${target.name}!`, "success");
+      } else if (card.actionType === "swap_body") {
+        const tmp = player.character.traits.body;
+        player.character.traits.body = target.character.traits.body;
+        target.character.traits.body = tmp;
+        player.character.revealed.body = true;
+        target.character.revealed.body = true;
+        room.log.unshift(`🔄 ${player.name} обменялся телосложением с ${target.name}!`);
+        showToast(`Обмен телосложением с ${target.name}!`, "success");
+      }
+      if (room.log && room.log[0]) room.activeEvent = room.log[0];
+      card.used = true;
+      saveRoomLocal(room);
+      render();
+    }
+
+    function startVoting() {
+      const room = state.room;
+      room.phase = "voting";
+      room.voting = { active: true, votes: {}, lastResult: null };
+      const alive = getPlayingParticipants(room).filter(p => !p.exiled);
+      alive.filter(p => p.isBot).forEach(bot => {
+        const candidates = alive.filter(c => c.id !== bot.id);
+        if (candidates.length > 0) room.voting.votes[bot.id] = pick(candidates).id;
+      });
+      room.log.unshift(`Раунд ${room.round}: началось голосование!`);
+      state.activeTab = "vote";
+      saveRoomLocal(room);
+      render();
+    }
+
+    function castVote(voterId, targetId) {
+      if (!state.room || !state.room.voting.active) return;
+      state.room.voting.votes[voterId] = targetId;
+      saveRoomLocal(state.room);
+      showToast("Голос учтён", "success");
+      render();
+    }
+
+    function finishVoting() {
+      const room = state.room;
+      if (!room || !room.voting.active) return;
+      const participants = getPlayingParticipants(room);
+      const tally = {};
+      participants.filter(p => !p.exiled).forEach(p => { tally[p.id] = 0; });
+
+      Object.entries(room.voting.votes).forEach(([voterId, targetId]) => {
+        const voter = participants.find(p => p.id === voterId);
+        const target = participants.find(p => p.id === targetId);
+        if (voter && !voter.exiled && target && !target.exiled && !target.immunity) {
+          tally[targetId] = (tally[targetId] || 0) + (voter.doubleVote ? 2 : 1);
+        }
+      });
+
+      let maxVotes = -1, leaders = [];
+      Object.entries(tally).forEach(([pid, count]) => {
+        if (count > maxVotes) { maxVotes = count; leaders = [pid]; }
+        else if (count === maxVotes) leaders.push(pid);
+      });
+
+      const exiledId = leaders.length > 0 ? pick(leaders) : null;
+      let resultText = "Никто не был изгнан.";
+      if (exiledId && maxVotes > 0) {
+        const ep = participants.find(p => p.id === exiledId);
+        ep.exiled = true;
+        resultText = `${ep.name} получил(а) ${maxVotes} голос(ов) и изгнан(а)!`;
+      }
+
+      room.log.unshift(resultText);
+      participants.forEach(p => { p.immunity = false; p.doubleVote = false; });
+      room.voting.active = false;
+      room.voting.lastResult = resultText;
+      room.round += 1;
+
+      if (participants.filter(p => !p.exiled).length <= room.bunkerSlots) {
+        room.phase = "gameover";
+        state.screen = "gameover";
+        participants.forEach(p => {
+          if (p.character) TRAIT_META.forEach(t => { p.character.revealed[t.key] = true; });
+        });
+      } else {
+        room.phase = "playing";
+      }
+
+      saveRoomLocal(room);
+      showToast(resultText, "warn");
+      render();
+    }
+
+    function leaveToHome() {
+      if (timerInterval) clearInterval(timerInterval);
+      state.room = null;
+      state.screen = "home";
+      render();
+    }
+
+    function openRulesModal() {
+      openModal(`
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-lg font-bold text-white flex items-center gap-2">
+            <i data-lucide="book-open" class="w-5 h-5 text-amber-400"></i>
+            Правила игры «Бункер»
+          </h3>
+          <button onclick="closeModal()" class="text-bunker-muted hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+        </div>
+        <div class="space-y-3 text-sm text-gray-300 leading-relaxed">
+          <p><strong class="text-white">Цель:</strong> доказать остальным выжившим, что именно вы принесете максимальную пользу в бункере после катастрофы.</p>
+          <p><strong class="text-white">Ведущий и таймер:</strong> в лобби можно выбрать режим «Ведущий только проводит игру» (как на стримах) или играть вместе со всеми. Ведущий управляет таймером речи (60 сек) и может в любой момент добавить предмет в инвентарь игрока или в бункер.</p>
+          <p><strong class="text-white">Личные паки:</strong> создавайте свои наборы характеристик, экспортируйте и делитесь ими через JSON.</p>
+        </div>
+      `);
+    }
+
+    function openSupabaseModal() {
+      const sqlSnippet = `create table bunker_rooms (
+  code text primary key,
+  state jsonb not null,
+  updated_at timestamptz default now()
+);
+alter table bunker_rooms disable row level security;
+alter publication supabase_realtime add table bunker_rooms;`;
+      openModal(`
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-lg font-bold text-white flex items-center gap-2">
+            <i data-lucide="database" class="w-5 h-5 text-amber-400"></i>
+            Онлайн-синхронизация (Supabase)
+          </h3>
+          <button onclick="closeModal()" class="text-bunker-muted hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+        </div>
+        <div class="space-y-3 mb-4">
+          <input id="sb-url" type="text" value="${state.supabaseCfg.url || ''}" placeholder="https://xxxx.supabase.co" class="w-full px-3 py-2 rounded-xl bg-bunker-bg border border-bunker-border text-sm text-white">
+          <input id="sb-key" type="password" value="${state.supabaseCfg.key || ''}" placeholder="Supabase Key" class="w-full px-3 py-2 rounded-xl bg-bunker-bg border border-bunker-border text-sm text-white">
+        </div>
+        <pre class="p-2.5 rounded-lg bg-bunker-bg border border-bunker-border text-[11px] font-mono text-emerald-300 overflow-x-auto mb-4">${sqlSnippet}</pre>
+        <div class="flex gap-2">
+          <button onclick="saveSupabaseSettings()" class="flex-1 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold text-sm">Сохранить</button>
+          <button onclick="clearSupabaseSettings()" class="px-4 py-2.5 rounded-xl bg-bunker-card text-gray-300 text-sm">Сбросить</button>
+        </div>
+      `);
+    }
+
+    async function saveSupabaseSettings() {
+      state.supabaseCfg = { url: document.getElementById("sb-url").value.trim(), key: document.getElementById("sb-key").value.trim() };
+      try { localStorage.setItem(STORAGE_KEY_SUPABASE, JSON.stringify(state.supabaseCfg)); } catch (e) {}
+      await initSupabaseIfConfigured();
+      closeModal();
+      showToast("Настройки сохранены", "success");
+      render();
+    }
+
+    function clearSupabaseSettings() {
+      state.supabaseCfg = { ...DEFAULT_SUPABASE_CFG };
+      try { localStorage.removeItem(STORAGE_KEY_SUPABASE); } catch (e) {}
+      closeModal();
+      showToast("Восстановлены встроенные настройки", "info");
+      render();
+    }
+
+    // =========================================================================
+    // RENDERERS
+    // =========================================================================
+    function renderNavbar() {
+      const nav = document.getElementById("navbar");
+      const sbActive = Boolean(state.supabaseCfg.url && state.supabaseCfg.key);
+      nav.innerHTML = `
+        <button onclick="state.screen = state.room ? (state.room.phase === 'lobby' ? 'lobby' : (state.room.phase === 'gameover' ? 'gameover' : 'game')) : 'home'; render();" class="flex items-center gap-2 font-extrabold tracking-tight text-white text-base sm:text-lg">
+          <span class="w-7 h-7 rounded-lg bg-amber-500 text-black flex items-center justify-center">
+            <i data-lucide="radiation" class="w-4 h-4"></i>
+          </span>
+          <span>BUNKER <span class="text-amber-400">ONLINE</span></span>
+        </button>
+
+        <div class="flex items-center gap-1.5 sm:gap-2">
+          <button onclick="state.screen='packs'; render();" class="px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 border transition ${state.screen === 'packs' || state.screen === 'packEditor' ? 'bg-amber-500 text-black border-amber-500' : 'bg-bunker-card border-bunker-border text-gray-200 hover:border-gray-500'}">
+            <i data-lucide="layers" class="w-3.5 h-3.5"></i>
+            <span>Личные паки (${state.customPacks.length})</span>
+          </button>
+          <button onclick="openRulesModal()" class="p-2 rounded-lg bg-bunker-card border border-bunker-border text-bunker-muted hover:text-white transition" title="Правила">
+            <i data-lucide="book-open" class="w-4 h-4"></i>
+          </button>
+          <button onclick="openSupabaseModal()" class="p-2 rounded-lg bg-bunker-card border border-bunker-border hover:border-gray-500 transition" title="Настройки Supabase">
+            <i data-lucide="wifi" class="w-4 h-4 ${sbActive ? 'text-emerald-400' : 'text-bunker-muted'}"></i>
+          </button>
+        </div>
+      `;
+    }
+
+    function render() {
+      renderNavbar();
+      const app = document.getElementById("app");
+      if (state.screen === "home") app.innerHTML = renderHome();
+      else if (state.screen === "packs") app.innerHTML = renderPacksList();
+      else if (state.screen === "packEditor") app.innerHTML = renderPackEditor();
+      else if (state.screen === "lobby") app.innerHTML = renderLobby();
+      else if (state.screen === "game") app.innerHTML = renderGame();
+      else if (state.screen === "gameover") app.innerHTML = renderGameOver();
+      if (window.lucide) lucide.createIcons();
+    }
+
+    function renderHome() {
+      return `
+        <div class="flex-1 flex flex-col justify-center items-center py-6">
+          <div class="w-full max-w-md">
+            <div class="text-center mb-7">
+              <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-mono uppercase tracking-wider mb-3">
+                <span class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+                Таймер речи • Панель ведущего • Личные паки
+              </div>
+              <h1 class="text-3xl sm:text-4xl font-extrabold text-white mb-2">Докажи, что достоин выжить</h1>
+              <p class="text-bunker-muted text-sm">Создайте комнату для друзей, используйте свои паки характеристик и управляйте игрой как на стриме.</p>
+            </div>
+
+            <div class="bg-bunker-surface border border-bunker-border rounded-2xl p-5 sm:p-6 shadow-2xl space-y-4">
+              <div>
+                <label class="block text-xs font-semibold uppercase tracking-wider text-bunker-muted mb-1.5">Ваше имя</label>
+                <input id="input-player-name" type="text" maxlength="20" value="${state.playerName}" placeholder="Например: Алексей"
+                  class="w-full px-4 py-3 rounded-xl bg-bunker-bg border border-bunker-border text-white placeholder-gray-600 focus:outline-none focus:border-amber-500 text-base" />
+              </div>
+
+              <button onclick="createRoom(false)" class="w-full py-3.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold text-base flex items-center justify-center gap-2 shadow-lg shadow-amber-500/10 transition">
+                <i data-lucide="plus-circle" class="w-5 h-5"></i>
+                Создать комнату
+              </button>
+
+              <div class="relative flex py-1 items-center">
+                <div class="flex-grow border-t border-bunker-border"></div>
+                <span class="flex-shrink mx-3 text-xs uppercase tracking-wider text-bunker-muted">или войти по коду</span>
+                <div class="flex-grow border-t border-bunker-border"></div>
+              </div>
+
+              <div class="flex gap-2">
+                <input id="input-room-code" type="text" inputmode="numeric" maxlength="4" value="${state.joinCode || ''}" placeholder="0000"
+                  class="w-32 px-4 py-3 rounded-xl bg-bunker-bg border border-bunker-border text-white text-center font-mono text-xl tracking-widest placeholder-gray-700 focus:outline-none focus:border-amber-500" />
+                <button onclick="joinRoom()" class="flex-1 py-3 rounded-xl bg-bunker-card hover:bg-bunker-border border border-bunker-border text-white font-semibold text-base flex items-center justify-center gap-2 transition">
+                  <i data-lucide="log-in" class="w-5 h-5 text-amber-400"></i>
+                  Войти
+                </button>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-2.5 mt-4">
+              <button onclick="createRoom(true)" class="py-3 px-3 rounded-xl bg-bunker-surface hover:bg-bunker-card border border-bunker-border text-gray-200 text-xs sm:text-sm font-medium flex items-center justify-center gap-2 transition">
+                <i data-lucide="cpu" class="w-4 h-4 text-emerald-400"></i>
+                Тест с ботами
+              </button>
+              <button onclick="state.screen='packs'; render();" class="py-3 px-3 rounded-xl bg-bunker-surface hover:bg-bunker-card border border-bunker-border text-gray-200 text-xs sm:text-sm font-medium flex items-center justify-center gap-2 transition">
+                <i data-lucide="layers" class="w-4 h-4 text-amber-400"></i>
+                Личные паки
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderPacksList() {
+      const cards = state.customPacks.map(p => {
+        const totalCustom = TRAIT_META.reduce((acc, m) => acc + ((p.traits && p.traits[m.key]) ? p.traits[m.key].length : 0), 0);
+        return `
+          <div class="bg-bunker-surface border border-bunker-border rounded-2xl p-4 flex flex-col justify-between gap-4">
+            <div>
+              <div class="flex items-start justify-between gap-2 mb-1">
+                <h3 class="text-base font-bold text-white">${p.name}</h3>
+                <div class="flex items-center gap-1 shrink-0">${p.syncedCloud ? '<span class="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 font-mono text-[10px]">☁️ Облако</span>' : ''}<span class="px-2 py-0.5 rounded bg-amber-500/15 text-amber-400 font-mono text-[11px]">${totalCustom} карт</span></div>
+              </div>
+              <p class="text-xs text-bunker-muted line-clamp-2">${p.description || 'Без описания'}</p>
+            </div>
+            <div class="flex gap-2 pt-2 border-t border-bunker-border">
+              <button onclick="openPackEditor('${p.id}')" class="flex-1 py-2 rounded-xl bg-bunker-card hover:bg-bunker-border text-xs font-semibold text-white transition">Редактировать</button>
+              <button onclick="exportPackJSON('${p.id}')" class="px-3 py-2 rounded-xl bg-bunker-card hover:bg-bunker-border text-amber-400 text-xs" title="Экспорт JSON"><i data-lucide="share-2" class="w-4 h-4"></i></button>
+              <button onclick="deleteCustomPack('${p.id}')" class="px-3 py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs" title="Удалить"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+            </div>
+          </div>
+        `;
+      }).join("");
+
+      return `
+        <div class="space-y-5">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <button onclick="state.screen = state.room ? 'lobby' : 'home'; render();" class="inline-flex items-center gap-1.5 text-xs text-bunker-muted hover:text-white mb-2">
+                <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i> Назад
+              </button>
+              <h1 class="text-2xl font-extrabold text-white">Личные паки характеристик</h1>
+              <p class="text-xs sm:text-sm text-bunker-muted">Создавайте свои сценарии, экспортируйте в JSON и выбирайте их при старте комнаты.</p>
+            </div>
+            <div class="flex gap-2">
+              <button onclick="openImportPackModal()" class="px-4 py-3 rounded-xl bg-bunker-card hover:bg-bunker-border border border-bunker-border text-gray-200 font-semibold text-xs sm:text-sm inline-flex items-center gap-1.5">
+                <i data-lucide="download" class="w-4 h-4 text-amber-400"></i> Импорт JSON
+              </button>
+              <button onclick="openPackEditor(null)" class="px-5 py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs sm:text-sm inline-flex items-center gap-2 transition">
+                <i data-lucide="plus" class="w-4 h-4"></i> Создать пак
+              </button>
+            </div>
+          </div>
+
+          ${state.customPacks.length > 0 ? `
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">${cards}</div>
+          ` : `
+            <div class="bg-bunker-surface border border-dashed border-bunker-border rounded-2xl p-10 text-center">
+              <i data-lucide="layers" class="w-10 h-10 text-bunker-muted mx-auto mb-3"></i>
+              <h3 class="text-base font-bold text-white mb-1">У вас пока нет личных паков</h3>
+              <p class="text-xs text-bunker-muted mb-4">Создайте свой пак — недостающие категории автоматически доберутся из базовой колоды.</p>
+              <button onclick="openPackEditor(null)" class="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold text-sm transition">Создать первый пак</button>
+            </div>
+          `}
+        </div>
+      `;
+    }
+
+    function renderPackEditor() {
+      const p = state.editingPack;
+      const traitFields = TRAIT_META.map(m => {
+        const lines = (p.traits && p.traits[m.key]) ? p.traits[m.key].join("\n") : "";
+        const disBase = p.disableBase && p.disableBase[m.key];
+        const exCount = (p.excludedBase && p.excludedBase[m.key]) ? p.excludedBase[m.key].length : 0;
+        return `
+          <div class="bg-bunker-surface border border-bunker-border rounded-xl p-3.5 space-y-2">
+            <div class="flex items-center justify-between gap-2">
+              <label class="text-xs font-bold text-amber-400 flex items-center gap-1.5">
+                <i data-lucide="${m.icon}" class="w-3.5 h-3.5"></i> ${m.label}
+              </label>
+              <div class="flex items-center gap-2">
+                <button type="button" onclick="openExcludeBaseModal('${m.key}')" class="px-2 py-1 rounded bg-bunker-card hover:bg-bunker-border border border-bunker-border text-[10px] text-gray-200 transition">
+                  Исключить из базы${exCount > 0 ? ` (${exCount})` : ''}
+                </button>
+                <label class="flex items-center gap-1 text-[10px] text-bunker-muted cursor-pointer">
+                  <input id="pk-disbase-${m.key}" type="checkbox" ${disBase ? 'checked' : ''} class="rounded bg-bunker-bg border-bunker-border text-red-500">
+                  <span>Без базы</span>
+                </label>
+              </div>
+            </div>
+            <textarea id="pk-trait-${m.key}" rows="4" placeholder="По одному варианту на строку"
+              class="w-full px-3 py-2 rounded-lg bg-bunker-bg border border-bunker-border text-xs text-white placeholder-gray-600 focus:outline-none focus:border-amber-500">${lines}</textarea>
+          </div>
+        `;
+      }).join("");
+
+      return `
+        <div class="space-y-5 pb-8">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <button onclick="state.screen='packs'; render();" class="inline-flex items-center gap-1.5 text-xs text-bunker-muted hover:text-white mb-1">
+                <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i> К списку паков
+              </button>
+              <h1 class="text-xl sm:text-2xl font-extrabold text-white">Редактор личного пака</h1>
+            </div>
+            <div class="flex gap-2">
+              <button onclick="fillPackExample()" class="px-3.5 py-2 rounded-xl bg-bunker-card border border-bunker-border text-xs font-semibold text-gray-200">Заполнить пример</button>
+              <button onclick="saveEditingPack()" class="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs sm:text-sm">Сохранить пак</button>
+            </div>
+          </div>
+
+          <div class="bg-bunker-surface border border-bunker-border rounded-2xl p-4 sm:p-5 space-y-4">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div><label class="block text-xs text-gray-300 mb-1">Название пака *</label><input id="pk-name" type="text" value="${p.name}" class="w-full px-3 py-2 rounded-lg bg-bunker-bg border border-bunker-border text-sm text-white"></div>
+              <div><label class="block text-xs text-gray-300 mb-1">Описание</label><input id="pk-desc" type="text" value="${p.description || ''}" class="w-full px-3 py-2 rounded-lg bg-bunker-bg border border-bunker-border text-sm text-white"></div>
+              <div><label class="block text-xs text-gray-300 mb-1">Название катаклизма</label><input id="pk-cat-title" type="text" value="${p.catastropheTitle || ''}" class="w-full px-3 py-2 rounded-lg bg-bunker-bg border border-bunker-border text-sm text-white"></div>
+              <div><label class="block text-xs text-gray-300 mb-1">Срок в бункере</label><input id="pk-duration" type="text" value="${p.duration || ''}" class="w-full px-3 py-2 rounded-lg bg-bunker-bg border border-bunker-border text-sm text-white"></div>
+            </div>
+            <div><label class="block text-xs text-gray-300 mb-1">Описание катаклизма</label><textarea id="pk-cat-desc" rows="2" class="w-full px-3 py-2 rounded-lg bg-bunker-bg border border-bunker-border text-sm text-white">${p.catastropheDesc || ''}</textarea></div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div><label class="block text-xs text-gray-300 mb-1">Площадь</label><input id="pk-area" type="text" value="${p.bunkerArea || ''}" class="w-full px-3 py-2 rounded-lg bg-bunker-bg border border-bunker-border text-sm text-white"></div>
+              <div><label class="block text-xs text-gray-300 mb-1">Локация</label><input id="pk-location" type="text" value="${p.bunkerLocation || ''}" class="w-full px-3 py-2 rounded-lg bg-bunker-bg border border-bunker-border text-sm text-white"></div>
+              <div><label class="block text-xs text-gray-300 mb-1">Комнаты</label><input id="pk-rooms" type="text" value="${p.bunkerRooms || ''}" class="w-full px-3 py-2 rounded-lg bg-bunker-bg border border-bunker-border text-sm text-white"></div>
+              <div><label class="block text-xs text-gray-300 mb-1">Еда и вода</label><input id="pk-food" type="text" value="${p.bunkerFood || ''}" class="w-full px-3 py-2 rounded-lg bg-bunker-bg border border-bunker-border text-sm text-white"></div>
+            </div>
+            <div><label class="block text-xs text-gray-300 mb-1">Предметы в бункере (1 на строку)</label><textarea id="pk-features" rows="3" class="w-full px-3 py-2 rounded-lg bg-bunker-bg border border-bunker-border text-xs text-white">${(p.bunkerFeatures || []).join("\n")}</textarea></div>
+            <div><label class="block text-xs text-amber-300 mb-1">Свои случайные события в бункере (1 на строку)</label><textarea id="pk-events" rows="3" placeholder="Например: ⚡ В бункере закончился кофе, все на нервах!" class="w-full px-3 py-2 rounded-lg bg-bunker-bg border border-bunker-border text-xs text-white">${(p.customEvents || []).join("\n")}</textarea></div>
+          </div>
+
+          <div class="bg-red-950/20 border border-red-500/30 rounded-2xl p-4 flex items-center justify-between gap-3">
+            <div>
+              <div class="text-sm font-bold text-white">Отключить всю обычную колоду</div>
+              <div class="text-xs text-bunker-muted">Если включено — в игре будут использоваться только ваши карты из этого пака (из базовой колоды ничего не берётся).</div>
+            </div>
+            <input id="pk-only-custom" type="checkbox" ${p.onlyCustom ? 'checked' : ''} class="w-5 h-5 rounded bg-bunker-bg border-bunker-border text-red-500 shrink-0 cursor-pointer">
+          </div>
+
+          <!-- Диапазоны и модификаторы (как в Bunker Online) -->
+          <div class="bg-bunker-surface border border-bunker-border rounded-2xl p-4 sm:p-5 space-y-4">
+            <h2 class="text-sm font-bold uppercase tracking-wider text-amber-400">Диапазоны (Возраст, Рост) и модификаторы</h2>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div class="p-3.5 rounded-xl bg-bunker-card border border-bunker-border space-y-2.5">
+                <label class="flex items-center justify-between text-xs font-semibold text-white cursor-pointer">
+                  <span>Диапазон возраста (лет)</span>
+                  <input id="pk-use-age" type="checkbox" ${p.useAgeRange !== false ? 'checked' : ''} class="rounded bg-bunker-bg border-bunker-border text-amber-500">
+                </label>
+                <div class="flex items-center gap-2">
+                  <input id="pk-age-min" type="number" min="1" max="999" value="${p.ageMin != null ? p.ageMin : 18}" class="w-full px-3 py-2 rounded-lg bg-bunker-bg border border-bunker-border text-sm text-white" placeholder="От">
+                  <span class="text-bunker-muted">—</span>
+                  <input id="pk-age-max" type="number" min="1" max="999" value="${p.ageMax != null ? p.ageMax : 65}" class="w-full px-3 py-2 rounded-lg bg-bunker-bg border border-bunker-border text-sm text-white" placeholder="До">
+                </div>
+                <div class="flex items-center justify-between gap-2 pt-1">
+                  <span class="text-[11px] text-bunker-muted">Шанс Чайлдфри (%):</span>
+                  <input id="pk-cf-chance" type="number" min="0" max="100" value="${p.childfreeChance != null ? p.childfreeChance : 20}" class="w-20 px-2 py-1 rounded-lg bg-bunker-bg border border-bunker-border text-xs text-white text-center">
+                </div>
+              </div>
+
+              <div class="p-3.5 rounded-xl bg-bunker-card border border-bunker-border space-y-2.5">
+                <label class="flex items-center justify-between text-xs font-semibold text-white cursor-pointer">
+                  <span>Диапазон роста (см)</span>
+                  <input id="pk-use-height" type="checkbox" ${p.useHeightRange !== false ? 'checked' : ''} class="rounded bg-bunker-bg border-bunker-border text-amber-500">
+                </label>
+                <div class="flex items-center gap-2">
+                  <input id="pk-height-min" type="number" min="30" max="400" value="${p.heightMin != null ? p.heightMin : 155}" class="w-full px-3 py-2 rounded-lg bg-bunker-bg border border-bunker-border text-sm text-white" placeholder="От">
+                  <span class="text-bunker-muted">—</span>
+                  <input id="pk-height-max" type="number" min="30" max="400" value="${p.heightMax != null ? p.heightMax : 196}" class="w-full px-3 py-2 rounded-lg bg-bunker-bg border border-bunker-border text-sm text-white" placeholder="До">
+                </div>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div class="p-3 rounded-xl bg-bunker-card border border-bunker-border space-y-2">
+                <label class="flex items-center justify-between text-xs font-semibold text-white cursor-pointer">
+                  <span>Стаж профессии</span>
+                  <input id="pk-use-prof-exp" type="checkbox" ${p.useProfExp !== false ? 'checked' : ''} class="rounded bg-bunker-bg border-bunker-border text-amber-500">
+                </label>
+                <input id="pk-prof-exp" type="text" value="${(p.customProfExp || []).join(', ')}" placeholder="Свои через запятую (опц.)" class="w-full px-2.5 py-1.5 rounded-lg bg-bunker-bg border border-bunker-border text-xs text-white">
+              </div>
+
+              <div class="p-3 rounded-xl bg-bunker-card border border-bunker-border space-y-2">
+                <label class="flex items-center justify-between text-xs font-semibold text-white cursor-pointer">
+                  <span>Степень здоровья</span>
+                  <input id="pk-use-health-deg" type="checkbox" ${p.useHealthDeg !== false ? 'checked' : ''} class="rounded bg-bunker-bg border-bunker-border text-amber-500">
+                </label>
+                <input id="pk-health-deg" type="text" value="${(p.customHealthDeg || []).join(', ')}" placeholder="Свои через запятую (опц.)" class="w-full px-2.5 py-1.5 rounded-lg bg-bunker-bg border border-bunker-border text-xs text-white">
+              </div>
+
+              <div class="p-3 rounded-xl bg-bunker-card border border-bunker-border space-y-2">
+                <label class="flex items-center justify-between text-xs font-semibold text-white cursor-pointer">
+                  <span>Стаж хобби</span>
+                  <input id="pk-use-hobby-exp" type="checkbox" ${p.useHobbyExp !== false ? 'checked' : ''} class="rounded bg-bunker-bg border-bunker-border text-amber-500">
+                </label>
+                <input id="pk-hobby-exp" type="text" value="${(p.customHobbyExp || []).join(', ')}" placeholder="Свои через запятую (опц.)" class="w-full px-2.5 py-1.5 rounded-lg bg-bunker-bg border border-bunker-border text-xs text-white">
+              </div>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3.5">${traitFields}</div>
+          <button onclick="saveEditingPack()" class="w-full py-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold text-base">Сохранить личный пак</button>
+        </div>
+      `;
+    }
+
+    function renderLobby() {
+      const room = state.room;
+      const isHost = room.hostId === CLIENT_ID;
+      const packOptions = [
+        `<option value="base" ${room.selectedPackId === 'base' ? 'selected' : ''}>Базовый пак (Bunker Online)</option>`,
+        ...state.customPacks.map(p => `<option value="${p.id}" ${room.selectedPackId === p.id ? 'selected' : ''}>Личный: ${p.name}</option>`)
+      ].join("");
+
+      return `
+        <div class="flex items-center justify-between mb-5">
+          <button onclick="leaveToHome()" class="inline-flex items-center gap-1.5 text-sm text-bunker-muted hover:text-white"><i data-lucide="arrow-left" class="w-4 h-4"></i> Выйти</button>
+          <div class="text-xs font-mono text-bunker-muted uppercase">Лобби комнаты</div>
+        </div>
+
+        <div class="hazard-stripe border border-amber-500/30 rounded-2xl p-5 mb-5 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div>
+            <div class="text-xs uppercase tracking-wider text-amber-400 font-semibold mb-1">Код комнаты</div>
+            <div class="text-4xl font-mono font-extrabold tracking-[0.2em] text-white">${room.code}</div>
+          </div>
+          <div class="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+            <button onclick="copyText('${room.code}')" class="px-4 py-3 rounded-xl bg-bunker-surface hover:bg-bunker-card border border-bunker-border text-sm font-semibold text-white flex items-center justify-center gap-2">
+              <i data-lucide="copy" class="w-4 h-4 text-amber-400"></i> Код
+            </button>
+            <button onclick="copyInviteLink('${room.code}')" class="px-4 py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-black text-sm font-bold flex items-center justify-center gap-2">
+              <i data-lucide="link" class="w-4 h-4"></i> Ссылка другу
+            </button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+          <div class="md:col-span-2 bg-bunker-surface border border-bunker-border rounded-2xl p-5">
+            <h2 class="text-base font-bold text-white mb-4 flex items-center gap-2">
+              <i data-lucide="users" class="w-5 h-5 text-amber-400"></i> Игроки (${room.players.length}/${room.maxPlayers || 12})
+            </h2>
+            <div class="space-y-2 mb-4">
+              ${room.players.map((p, idx) => `
+                <div class="flex items-center justify-between px-4 py-2.5 rounded-xl bg-bunker-card border border-bunker-border">
+                  <div class="flex items-center gap-3">
+                    <span class="w-7 h-7 rounded-lg bg-bunker-bg border border-bunker-border flex items-center justify-center font-mono text-xs text-amber-400 font-bold">${idx + 1}</span>
+                    <span class="text-sm font-semibold text-white">${p.name}</span>
+                    ${p.isHost ? `<span class="px-2 py-0.5 text-[10px] font-mono uppercase rounded bg-amber-500/20 text-amber-400">${room.hostPlays ? 'Хост-игрок' : 'Ведущий'}</span>` : ''}
+                  </div>
+                  ${isHost && !p.isHost ? `<button onclick="removePlayer('${p.id}')" class="p-1.5 text-bunker-muted hover:text-red-400"><i data-lucide="trash-2" class="w-4 h-4"></i></button>` : ''}
+                </div>
+              `).join("")}
+            </div>
+            ${isHost ? `
+              <div class="grid grid-cols-2 gap-2.5 pt-2 border-t border-bunker-border">
+                <button onclick="addBotOrLocalPlayer(false)" class="py-2.5 px-3 rounded-xl bg-bunker-card hover:bg-bunker-border border border-bunker-border text-xs sm:text-sm font-medium text-gray-200 flex items-center justify-center gap-1.5">
+                  <i data-lucide="user-plus" class="w-4 h-4 text-amber-400"></i> + Локальный игрок
+                </button>
+                <button onclick="addBotOrLocalPlayer(true)" class="py-2.5 px-3 rounded-xl bg-bunker-card hover:bg-bunker-border border border-bunker-border text-xs sm:text-sm font-medium text-gray-200 flex items-center justify-center gap-1.5">
+                  <i data-lucide="bot" class="w-4 h-4 text-emerald-400"></i> + Добавить бота
+                </button>
+              </div>
+            ` : ''}
+          </div>
+
+          <div class="bg-bunker-surface border border-bunker-border rounded-2xl p-5 flex flex-col justify-between gap-4">
+            <div class="space-y-4">
+              <div>
+                <label class="block text-xs font-semibold uppercase tracking-wider text-bunker-muted mb-2">Пак характеристик</label>
+                <select ${!isHost ? 'disabled' : ''} onchange="selectRoomPack(this.value)" class="w-full px-3 py-2.5 rounded-xl bg-bunker-bg border border-bunker-border text-sm text-white">
+                  ${packOptions}
+                </select>
+                ${isHost ? `
+                  <div class="mt-2 flex flex-wrap gap-3">
+                    <button onclick="state.screen='packs'; render();" class="text-xs text-amber-400 hover:underline inline-flex items-center gap-1"><i data-lucide="settings" class="w-3 h-3"></i> Личные паки</button>
+                    <button onclick="openLobbyFilterModal()" class="text-xs text-emerald-400 hover:underline inline-flex items-center gap-1"><i data-lucide="sliders-horizontal" class="w-3 h-3"></i> Фильтр карт</button>
+                  </div>
+                ` : ''}
+              </div>
+
+              ${isHost ? `
+                <label class="flex items-center justify-between p-3 rounded-xl bg-bunker-card border border-bunker-border cursor-pointer">
+                  <span class="text-xs text-gray-200 font-medium">Ведущий играет с карточкой</span>
+                  <input type="checkbox" ${room.hostPlays ? 'checked' : ''} onchange="toggleHostPlays()" class="rounded bg-bunker-bg border-bunker-border text-amber-500">
+                </label>
+              ` : ''}
+
+              <div class="p-4 rounded-xl bg-bunker-card border border-bunker-border">
+                <div class="text-xs text-bunker-muted mb-2">Максимум игроков в комнате</div>
+                <div class="flex items-center justify-between">
+                  <button ${!isHost ? 'disabled' : ''} onclick="adjustMaxPlayers(-1)" class="w-10 h-10 rounded-lg bg-bunker-bg border border-bunker-border text-white font-bold text-lg">-</button>
+                  <span class="text-3xl font-mono font-bold text-white">${room.maxPlayers || 12}</span>
+                  <button ${!isHost ? 'disabled' : ''} onclick="adjustMaxPlayers(1)" class="w-10 h-10 rounded-lg bg-bunker-bg border border-bunker-border text-white font-bold text-lg">+</button>
+                </div>
+              </div>
+
+              <div class="p-4 rounded-xl bg-bunker-card border border-bunker-border">
+                <div class="text-xs text-bunker-muted mb-2">Мест в бункере</div>
+                <div class="flex items-center justify-between">
+                  <button ${!isHost ? 'disabled' : ''} onclick="adjustSlots(-1)" class="w-10 h-10 rounded-lg bg-bunker-bg border border-bunker-border text-white font-bold text-lg">-</button>
+                  <span class="text-3xl font-mono font-bold text-amber-400">${room.bunkerSlots}</span>
+                  <button ${!isHost ? 'disabled' : ''} onclick="adjustSlots(1)" class="w-10 h-10 rounded-lg bg-bunker-bg border border-bunker-border text-white font-bold text-lg">+</button>
+                </div>
+              </div>
+            </div>
+
+            ${isHost ? `
+              <button onclick="startGame()" class="w-full py-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold text-base flex items-center justify-center gap-2">
+                <i data-lucide="play" class="w-5 h-5"></i> Начать игру
+              </button>
+            ` : `<div class="text-center text-xs text-bunker-muted py-3">Ожидаем запуска хостом...</div>`}
+          </div>
+        </div>
+      `;
+    }
+
+    function renderGame() {
+      const room = state.room;
+      const isHost = room.hostId === CLIENT_ID;
+      const participants = getPlayingParticipants(room);
+      const aliveCount = participants.filter(p => !p.exiled).length;
+
+      let currentPlayer = participants.find(p => p.id === state.viewingPlayerId) || participants[0];
+      const localHumans = participants.filter(p => !p.isBot);
+      const speaker = participants.find(p => p.id === room.timer.speakerId) || participants[0];
+
+      return `
+        <!-- Top Status + Speech Timer Bar -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+          <div class="md:col-span-2 bg-bunker-surface border border-bunker-border rounded-2xl p-3.5 flex items-center justify-between gap-3">
+            <div class="cursor-pointer flex-1" onclick="state.catastropheExpanded = !state.catastropheExpanded; render();">
+              <div class="text-[11px] font-mono uppercase text-red-400 flex flex-wrap items-center gap-2">
+                <span class="inline-flex items-center gap-1"><i data-lucide="radiation" class="w-3.5 h-3.5"></i> Раунд ${room.round} • ${room.catastrophe.duration}</span>
+                <span class="px-2 py-0.5 rounded bg-bunker-card border border-bunker-border text-gray-200 inline-flex items-center gap-1">
+                  <i data-lucide="clock" class="w-3 h-3 text-amber-400"></i>
+                  В игре: <span id="game-duration-val">${room.startedAt ? formatElapsed(Date.now() - room.startedAt) : '00:00'}</span>
+                </span>
+              </div>
+              <div class="text-sm sm:text-base font-bold text-white">${room.catastrophe.title}</div>
+            </div>
+            <div class="flex items-center gap-2 shrink-0">
+              <span class="px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold">
+                ${aliveCount}/${room.bunkerSlots} мест
+              </span>
+              <button onclick="state.catastropheExpanded = !state.catastropheExpanded; render();" class="p-2 rounded-lg bg-bunker-card text-bunker-muted">
+                <i data-lucide="${state.catastropheExpanded ? 'chevron-up' : 'chevron-down'}" class="w-4 h-4"></i>
+              </button>
+            </div>
+          </div>
+
+          <!-- Speech Timer Card -->
+          <div class="bg-bunker-surface border border-bunker-border rounded-2xl p-3.5 flex items-center justify-between gap-2">
+            <div>
+              <div class="text-[10px] font-mono uppercase text-bunker-muted">Таймер речи</div>
+              <div id="speech-timer-val" class="text-xl font-mono font-extrabold ${room.timer.seconds <= 10 ? 'text-red-400' : 'text-amber-400'}">${formatTime(room.timer.seconds)}</div>
+              <div class="text-[11px] text-gray-300 truncate max-w-[120px]">${speaker ? speaker.name : ''}</div>
+            </div>
+            <div class="flex items-center gap-1">
+              <button onclick="openFreeDiceModal()" class="p-2 rounded-lg bg-bunker-card hover:bg-amber-500 hover:text-black border border-bunker-border text-amber-400 transition" title="Бросить кубик (d6/d20/монетка)">
+                <i data-lucide="dices" class="w-4 h-4"></i>
+              </button>
+            ${isHost ? `
+              <div class="flex items-center gap-1">
+                <button onclick="toggleTimer()" class="p-2 rounded-lg ${room.timer.running ? 'bg-red-500 text-white' : 'bg-amber-500 text-black'} font-bold" title="Старт/Пауза">
+                  <i data-lucide="${room.timer.running ? 'pause' : 'play'}" class="w-4 h-4"></i>
+                </button>
+                <button onclick="resetTimer(60)" class="p-2 rounded-lg bg-bunker-card border border-bunker-border text-gray-300" title="Сброс 60с">
+                  <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+                </button>
+                <button onclick="triggerRandomEvent()" class="p-2 rounded-lg bg-amber-500/15 border border-amber-500/40 text-amber-400 hover:bg-amber-500 hover:text-black transition" title="Случайный рофл / событие">
+                  <i data-lucide="zap" class="w-4 h-4"></i>
+                </button>
+              </div>
+            ` : ''}
+            </div>
+          </div>
+        </div>
+
+        ${state.catastropheExpanded ? `
+          <div class="bg-bunker-surface border border-bunker-border rounded-2xl p-4 mb-4 space-y-3 text-xs">
+            <p class="text-gray-300 leading-relaxed">${room.catastrophe.desc}</p>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              <div class="p-3 rounded-xl bg-bunker-card border border-bunker-border">
+                <div class="text-amber-400 font-semibold mb-1">Бункер: ${room.bunker.area}</div>
+                <div class="text-gray-300">${room.bunker.location}</div>
+              </div>
+              <div class="p-3 rounded-xl bg-bunker-card border border-bunker-border">
+                <div class="text-amber-400 font-semibold mb-1">Помещения и еда</div>
+                <div class="text-gray-300">${room.bunker.rooms}. ${room.bunker.food}</div>
+              </div>
+              <div class="p-3 rounded-xl bg-bunker-card border border-bunker-border">
+                <div class="text-amber-400 font-semibold mb-1">В бункере есть:</div>
+                <ul class="text-gray-300 list-disc list-inside space-y-0.5">
+                  ${room.bunker.features.map(f => `<li>${f}</li>`).join("")}
+                </ul>
+                ${isHost ? `<button onclick="openHostAddBunkerItemModal()" class="mt-2 text-[11px] font-semibold text-amber-400 hover:underline inline-flex items-center gap-1"><i data-lucide="plus" class="w-3 h-3"></i> Добавить предмет</button>` : ''}
+              </div>
+            </div>
+          </div>
+        ` : ''}
+
+        ${room.activeEvent ? `
+          <div class="mb-4 px-4 py-3 rounded-xl bg-amber-500/10 border border-amber-500/40 flex items-center justify-between gap-3">
+            <div class="text-xs sm:text-sm font-medium text-amber-200">${room.activeEvent}</div>
+            ${isHost ? `<button onclick="state.room.activeEvent=null; saveRoomLocal(state.room); render();" class="text-amber-400 hover:text-white shrink-0"><i data-lucide="x" class="w-4 h-4"></i></button>` : ''}
+          </div>
+        ` : ''}
+
+        <!-- Tabs -->
+        <div class="grid grid-cols-4 gap-1.5 mb-4 bg-bunker-surface p-1.5 rounded-xl border border-bunker-border">
+          <button onclick="state.activeTab='table'; render();" class="py-2.5 px-2 rounded-lg text-xs sm:text-sm font-semibold flex items-center justify-center gap-1.5 transition ${state.activeTab === 'table' ? 'bg-amber-500 text-black' : 'text-bunker-muted hover:text-white'}">
+            <i data-lucide="layout-grid" class="w-4 h-4"></i> <span class="hidden sm:inline">Общий стол</span><span class="sm:hidden">Стол</span>
+          </button>
+          <button onclick="state.activeTab='mycard'; render();" class="py-2.5 px-2 rounded-lg text-xs sm:text-sm font-semibold flex items-center justify-center gap-1.5 transition ${state.activeTab === 'mycard' ? 'bg-amber-500 text-black' : 'text-bunker-muted hover:text-white'}">
+            <i data-lucide="id-card" class="w-4 h-4"></i> <span class="hidden sm:inline">Моя карточка</span><span class="sm:hidden">Карта</span>
+          </button>
+          <button onclick="state.activeTab='vote'; render();" class="py-2.5 px-2 rounded-lg text-xs sm:text-sm font-semibold flex items-center justify-center gap-1.5 transition ${state.activeTab === 'vote' ? 'bg-red-500 text-white' : 'text-bunker-muted hover:text-white'}">
+            <i data-lucide="vote" class="w-4 h-4"></i> <span class="hidden sm:inline">Голосование</span><span class="sm:hidden">Голос</span>
+          </button>
+          <button onclick="state.activeTab='log'; render();" class="py-2.5 px-2 rounded-lg text-xs sm:text-sm font-semibold flex items-center justify-center gap-1.5 transition ${state.activeTab === 'log' ? 'bg-bunker-card text-white border border-bunker-border' : 'text-bunker-muted hover:text-white'}">
+            <i data-lucide="scroll-text" class="w-4 h-4"></i> <span class="hidden sm:inline">События</span><span class="sm:hidden">Лог</span>
+          </button>
+        </div>
+
+        <div class="flex-1">
+          ${state.activeTab === "table" ? renderTableTab(participants, isHost) : ""}
+          ${state.activeTab === "mycard" ? renderMyCardTab(currentPlayer, localHumans) : ""}
+          ${state.activeTab === "vote" ? renderVoteTab(isHost, currentPlayer, participants) : ""}
+          ${state.activeTab === "log" ? renderLogTab() : ""}
+        </div>
+      `;
+    }
+
+    function renderTableTab(participants, isHost) {
+      const speakerId = state.room.timer.speakerId;
+
+      const desktopTable = `
+        <div class="hidden md:block bg-[#0e1116] border border-bunker-border rounded-2xl overflow-hidden shadow-2xl">
+          <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse min-w-[1150px]">
+              <thead>
+                <tr class="border-b border-bunker-border bg-[#131720] text-[11px] font-semibold text-bunker-muted">
+                  <th class="sticky left-0 z-20 bg-[#131720] py-3 px-4 border-r border-bunker-border/70 min-w-[210px]">№ Имя</th>
+                  ${getActiveTraitMeta(state.room).map(m => `<th class="py-3 px-3 border-r border-bunker-border/50 last:border-r-0 min-w-[130px]">${m.label}</th>`).join("")}
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-bunker-border/60 text-xs">
+                ${participants.map((p, idx) => {
+                  const char = p.character;
+                  const isSpeaking = speakerId === p.id && !p.exiled;
+                  const rowBg = p.exiled
+                    ? "bg-red-950/20 opacity-50"
+                    : (isSpeaking ? "bg-gradient-to-r from-amber-500/15 via-amber-500/5 to-transparent" : "hover:bg-white/[0.02]");
+                  const stickyBg = p.exiled
+                    ? "bg-[#1a1116]"
+                    : (isSpeaking ? "bg-[#1c1a14]" : "bg-[#0e1116]");
+                  const initials = p.name.slice(0, 2).toUpperCase();
+
+                  return `
+                    <tr class="${rowBg} transition">
+                      <td class="sticky left-0 z-10 ${stickyBg} py-3.5 px-4 border-r border-bunker-border/70 align-middle">
+                        <div class="flex items-center gap-3">
+                          <span class="font-mono text-xs font-bold text-gray-400 w-4 shrink-0">${idx + 1}</span>
+                          <div class="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold shrink-0 border ${isSpeaking ? 'border-amber-400 bg-amber-500/20 text-amber-300 shadow-[0_0_12px_rgba(245,158,11,0.35)]' : 'border-gray-600 bg-bunker-card text-gray-300'}">
+                            ${initials}
+                          </div>
+                          <div class="min-w-0 flex-1">
+                            <div class="font-bold text-xs sm:text-sm truncate ${isSpeaking ? 'text-amber-300' : 'text-white'} ${p.exiled ? 'line-through text-red-300' : ''}">
+                              ${p.name} ${p.rivalName ? `<span class="ml-1 text-[10px] text-red-400">(⚔️ ${p.rivalName})</span>` : ''}
+                            </div>
+                            <div class="flex items-center gap-2 mt-0.5 text-[10px]">
+                              <span class="${p.exiled ? 'text-red-400' : 'text-bunker-muted'}">${p.exiled ? 'Изгнан' : (p.isHost ? 'Ведущий' : 'Игрок')}</span>
+                              ${isHost ? `
+                                <button onclick="toggleExileHost('${p.id}')" class="text-gray-400 hover:text-red-400 underline">${p.exiled ? 'вернуть' : 'изгнать'}</button>
+                                <button onclick="openHostEditPlayerModal('${p.id}')" class="text-amber-400 hover:text-amber-300 underline">изм.</button>
+                                ${!p.exiled ? `<button onclick="setSpeaker('${p.id}')" class="text-emerald-400 hover:text-emerald-300 underline">слово</button>` : ''}
+                              ` : ''}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                      ${getActiveTraitMeta(state.room).map(m => {
+                        const isRev = char.revealed[m.key];
+                        return `
+                          <td class="py-3.5 px-3 border-r border-bunker-border/40 last:border-r-0 align-middle">
+                            ${isRev
+                              ? (() => {
+                                  const ab = (m.key === "profession" || m.key === "hobby") ? getTraitAbility(m.key, char.traits[m.key]) : null;
+                                  const used = m.key === "profession" ? char.profAbilityUsed : char.hobbyAbilityUsed;
+                                  const badge = ab ? `<span class="mt-1 inline-block px-1.5 py-0.5 rounded text-[10px] font-mono ${used ? 'bg-bunker-card text-bunker-muted' : 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'}">${used ? '✓ ' + ab.title : '⚡ ' + ab.title}</span>` : '';
+                                  return `<span class="text-gray-100 font-medium leading-snug block">${char.traits[m.key]}</span>${badge}`;
+                                })()
+                              : `<span class="text-transparent select-none">—</span>`
+                            }
+                          </td>
+                        `;
+                      }).join("")}
+                    </tr>
+                  `;
+                }).join("")}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+
+      const mobileCards = `
+        <div class="md:hidden space-y-3">
+          ${participants.map((p, idx) => {
+            const char = p.character;
+            const isSpeaking = speakerId === p.id && !p.exiled;
+            const initials = p.name.slice(0, 2).toUpperCase();
+            const revealedTraits = getActiveTraitMeta(state.room).filter(m => char.revealed[m.key]);
+
+            return `
+              <div class="rounded-2xl p-3.5 border transition ${p.exiled ? 'bg-red-950/15 border-red-500/30 opacity-60' : (isSpeaking ? 'bg-gradient-to-br from-amber-500/15 to-bunker-surface border-amber-500' : 'bg-[#0e1116] border-bunker-border')}">
+                <div class="flex items-center justify-between gap-2 mb-2.5">
+                  <div class="flex items-center gap-2.5 min-w-0">
+                    <span class="font-mono text-xs font-bold text-gray-400">${idx + 1}</span>
+                    <div class="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 border ${isSpeaking ? 'border-amber-400 bg-amber-500/20 text-amber-300' : 'border-gray-600 bg-bunker-card text-gray-300'}">
+                      ${initials}
+                    </div>
+                    <div class="min-w-0">
+                      <div class="font-bold text-sm truncate ${isSpeaking ? 'text-amber-300' : 'text-white'} ${p.exiled ? 'line-through text-red-300' : ''}">${p.name}</div>
+                      <div class="text-[10px] ${p.exiled ? 'text-red-400' : 'text-bunker-muted'}">${p.exiled ? 'Изгнан' : (p.isHost ? 'Ведущий' : 'Игрок')}</div>
+                    </div>
+                  </div>
+                  ${isHost ? `
+                    <div class="flex items-center gap-1 shrink-0">
+                      ${!p.exiled ? `<button onclick="setSpeaker('${p.id}')" class="p-1.5 rounded-lg bg-bunker-card border border-bunker-border text-emerald-400" title="Слово"><i data-lucide="mic" class="w-3.5 h-3.5"></i></button>` : ''}
+                      <button onclick="openHostEditPlayerModal('${p.id}')" class="p-1.5 rounded-lg bg-bunker-card border border-bunker-border text-amber-400" title="Изменить"><i data-lucide="pencil" class="w-3.5 h-3.5"></i></button>
+                      <button onclick="toggleExileHost('${p.id}')" class="p-1.5 rounded-lg bg-bunker-card border border-bunker-border text-red-400" title="${p.exiled ? 'Вернуть' : 'Изгнать'}"><i data-lucide="${p.exiled ? 'rotate-ccw' : 'user-x'}" class="w-3.5 h-3.5"></i></button>
+                    </div>
+                  ` : ''}
+                </div>
+
+                ${revealedTraits.length > 0 ? `
+                  <div class="grid grid-cols-2 gap-1.5 pt-2 border-t border-bunker-border/50">
+                    ${revealedTraits.map(m => `
+                      <div class="bg-bunker-surface/80 rounded-lg px-2.5 py-1.5 border border-bunker-border/40">
+                        <div class="text-[10px] text-bunker-muted">${m.label}</div>
+                        <div class="text-xs text-gray-100 font-medium leading-tight mt-0.5">${char.traits[m.key]}</div>
+                        ${(() => {
+                          if (m.key !== "profession" && m.key !== "hobby") return "";
+                          const ab = getTraitAbility(m.key, char.traits[m.key]);
+                          if (!ab) return "";
+                          const used = m.key === "profession" ? char.profAbilityUsed : char.hobbyAbilityUsed;
+                          return `<span class="mt-1 inline-block px-1.5 py-0.5 rounded text-[9px] font-mono ${used ? 'bg-bunker-card text-bunker-muted' : 'bg-emerald-500/15 text-emerald-300'}">${used ? '✓ ' + ab.title : '⚡ ' + ab.title}</span>`;
+                        })()}
+                      </div>
+                    `).join("")}
+                  </div>
+                ` : `
+                  <div class="text-[11px] text-gray-500 font-mono pt-1.5 border-t border-bunker-border/40">Все карты пока скрыты</div>
+                `}
+              </div>
+            `;
+          }).join("")}
+        </div>
+      `;
+
+      return desktopTable + mobileCards;
+    }
+
+    function renderMyCardTab(player, localHumans) {
+      if (!player || !player.character) {
+        return `
+          <div class="bg-bunker-surface border border-bunker-border rounded-2xl p-8 text-center">
+            <i data-lucide="crown" class="w-10 h-10 text-amber-400 mx-auto mb-3"></i>
+            <h3 class="text-lg font-bold text-white mb-1">Вы — Ведущий игры</h3>
+            <p class="text-sm text-bunker-muted">Управляйте таймером речи, голосованием и карточками игроков на вкладке «Общий стол».</p>
+          </div>
+        `;
+      }
+
+      const char = player.character;
+      const switcherHtml = localHumans.length > 1 ? `
+        <div class="mb-4 p-3 rounded-xl bg-bunker-surface border border-bunker-border flex flex-wrap items-center justify-between gap-2">
+          <div class="text-xs text-bunker-muted">Игрок:</div>
+          <div class="flex flex-wrap gap-1.5">
+            ${localHumans.map(lh => `
+              <button onclick="state.viewingPlayerId='${lh.id}'; state.privacyShield=true; render();" class="px-3 py-1 rounded-lg text-xs font-semibold border ${lh.id === player.id ? 'bg-amber-500 text-black border-amber-500' : 'bg-bunker-card text-gray-300 border-bunker-border'}">${lh.name}</button>
+            `).join("")}
+          </div>
+        </div>
+      ` : '';
+
+      if (state.privacyShield) {
+        return `${switcherHtml}
+          <div class="bg-bunker-surface border border-bunker-border rounded-2xl p-8 text-center">
+            <i data-lucide="eye-off" class="w-10 h-10 text-amber-400 mx-auto mb-3"></i>
+            <h3 class="text-lg font-bold text-white mb-1">Карточка скрыта</h3>
+            <p class="text-sm text-bunker-muted mb-5">Передайте экран игроку <strong class="text-white">${player.name}</strong></p>
+            <button onclick="state.privacyShield=false; render();" class="px-6 py-3 rounded-xl bg-amber-500 text-black font-bold text-sm">Показать карточку</button>
+          </div>`;
+      }
+
+      if (player.exiled) {
+        return `${switcherHtml}
+          <div class="bg-red-950/30 border border-red-500/30 rounded-2xl p-6 text-center">
+            <i data-lucide="skull" class="w-10 h-10 text-red-400 mx-auto mb-2"></i>
+            <h3 class="text-lg font-bold text-red-300">${player.name} — Изгнан</h3>
+          </div>`;
+      }
+
+      const traitsHtml = getActiveTraitMeta(state.room).map(meta => {
+        const val = char.traits[meta.key];
+        const isRev = char.revealed[meta.key];
+        return `
+          <div class="p-3.5 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${isRev ? 'bg-emerald-950/20 border-emerald-500/30' : 'bg-bunker-card border-bunker-border'}">
+            <div class="flex items-start gap-3">
+              <div class="p-2 rounded-lg bg-bunker-bg border border-bunker-border text-amber-400 shrink-0 mt-0.5"><i data-lucide="${meta.icon}" class="w-4 h-4"></i></div>
+              <div>
+                <div class="text-[11px] uppercase tracking-wider font-semibold text-bunker-muted">${meta.label} ${isRev ? '<span class="text-emerald-400">• Открыто</span>' : '<span class="text-gray-500">• Скрыто</span>'}</div>
+                <div class="text-sm font-semibold text-white mt-0.5">${val}</div>
+              </div>
+            </div>
+            <div class="flex flex-wrap items-center gap-1.5 shrink-0">
+              ${(() => {
+                if (meta.key !== "profession" && meta.key !== "hobby") return "";
+                const ab = getTraitAbility(meta.key, val);
+                const used = meta.key === "profession" ? char.profAbilityUsed : char.hobbyAbilityUsed;
+                if (!ab) return "";
+                if (used) return '<span class="px-2.5 py-1 rounded-lg bg-bunker-bg border border-bunker-border text-bunker-muted text-[11px] font-mono">Навык исп.</span>';
+                return `<button onclick="useTraitAbility('${player.id}', '${meta.key}')" class="px-3 py-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500 hover:text-black border border-emerald-500/40 text-emerald-300 text-xs font-bold transition" title="${ab.desc}">⚡ ${ab.title}</button>`;
+              })()}
+              ${!isRev
+                ? `<button onclick="revealTrait('${player.id}', '${meta.key}')" class="px-4 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500 hover:text-black border border-amber-500/40 text-amber-300 text-xs font-bold transition">Открыть</button>`
+                : `<span class="px-3 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 text-xs font-mono text-center">На столе</span>`
+              }
+            </div>
+          </div>
+        `;
+      }).join("");
+
+      const specialsHtml = char.specials.map((sp, idx) => `
+        <div class="p-4 rounded-xl border ${sp.used ? 'bg-bunker-bg border-bunker-border opacity-50' : 'bg-amber-500/5 border-amber-500/30'} flex flex-col justify-between gap-3">
+          <div>
+            <div class="text-xs font-mono uppercase text-amber-400 mb-1">Спец. возможность ${idx + 1}</div>
+            <div class="text-sm font-bold text-white mb-1">${sp.title}</div>
+            <div class="text-xs text-gray-300">${sp.desc}</div>
+          </div>
+          ${!sp.used
+            ? `<button onclick="useSpecialCard('${player.id}', ${idx})" class="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs">Использовать</button>`
+            : `<div class="text-center text-xs font-mono text-bunker-muted">Использовано</div>`
+          }
+        </div>
+      `).join("");
+
+      return `
+        ${switcherHtml}
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-2.5 mb-6">${traitsHtml}</div>
+        <h3 class="text-sm font-bold uppercase tracking-wider text-bunker-muted mb-3">Специальные возможности</h3>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">${specialsHtml}</div>
+      `;
+    }
+
+    function renderVoteTab(isHost, currentPlayer, participants) {
+      const room = state.room;
+      const alive = participants.filter(p => !p.exiled);
+      const votedCount = Object.keys(room.voting.votes).length;
+      const myVote = currentPlayer ? room.voting.votes[currentPlayer.id] : null;
+
+      if (!room.voting.active) {
+        return `
+          <div class="bg-bunker-surface border border-bunker-border rounded-2xl p-6 text-center space-y-4">
+            <i data-lucide="gavel" class="w-10 h-10 text-amber-400 mx-auto"></i>
+            <div>
+              <h3 class="text-lg font-bold text-white">Фаза обсуждения</h3>
+              <p class="text-sm text-bunker-muted mt-1">Открывайте карты, используйте таймер речи и убеждайте остальных.</p>
+            </div>
+            ${room.voting.lastResult ? `<div class="p-3 rounded-xl bg-bunker-card border border-bunker-border text-xs text-amber-300">${room.voting.lastResult}</div>` : ''}
+            ${isHost ? `
+              <button onclick="startVoting()" class="px-8 py-4 rounded-xl bg-red-500 hover:bg-red-400 text-white font-bold text-base inline-flex items-center gap-2">
+                <i data-lucide="vote" class="w-5 h-5"></i> Запустить голосование
+              </button>
+            ` : `<div class="text-xs text-bunker-muted">Ожидайте запуска голосования ведущим.</div>`}
+          </div>
+        `;
+      }
+
+      const counts = {};
+      Object.values(room.voting.votes).forEach(tid => { counts[tid] = (counts[tid] || 0) + 1; });
+
+      return `
+        <div class="bg-bunker-surface border border-bunker-border rounded-2xl p-4 sm:p-5 space-y-4">
+          <div class="flex items-center justify-between">
+            <h3 class="text-base font-bold text-white">Голосование на изгнание</h3>
+            <span class="text-xs text-bunker-muted">Проголосовало: ${votedCount}/${alive.length}</span>
+          </div>
+          <div class="space-y-2">
+            ${alive.map(c => {
+              const isSelected = myVote === c.id;
+              const canVote = currentPlayer && !currentPlayer.exiled && c.id !== currentPlayer.id && (room.hostPlays || CLIENT_ID !== room.hostId);
+              return `
+                <div class="p-3.5 rounded-xl border flex items-center justify-between gap-3 ${isSelected ? 'bg-red-500/15 border-red-500' : 'bg-bunker-card border-bunker-border'}">
+                  <div>
+                    <div class="text-sm font-bold text-white">${c.name}</div>
+                    <div class="text-xs text-bunker-muted">${c.character.revealed.profession ? c.character.traits.profession : 'Профессия скрыта'} • Голосов: <strong class="text-white">${counts[c.id] || 0}</strong></div>
+                  </div>
+                  ${canVote ? `<button onclick="castVote('${currentPlayer.id}', '${c.id}')" class="px-4 py-2 rounded-xl text-xs font-bold ${isSelected ? 'bg-red-500 text-white' : 'bg-bunker-bg border border-bunker-border text-gray-200'}">${isSelected ? 'Выбран' : 'Против'}</button>` : `<span class="text-xs text-bunker-muted">—</span>`}
+                </div>
+              `;
+            }).join("")}
+          </div>
+          ${isHost ? `<button onclick="finishVoting()" class="w-full py-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold text-sm">Завершить голосование</button>` : ''}
+        </div>
+      `;
+    }
+
+    function renderLogTab() {
+      return `
+        <div class="bg-bunker-surface border border-bunker-border rounded-2xl p-4 space-y-2 max-h-[60vh] overflow-y-auto">
+          ${state.room.log.map(entry => `
+            <div class="text-xs text-gray-300 py-2 border-b border-bunker-border/40 last:border-0">${entry}</div>
+          `).join("")}
+        </div>
+      `;
+    }
+
+    const SURVIVAL_QUESTIONS = [
+      "У вас хватает еды на весь период (включая отыгрыш добычи еды)?",
+      "Все опасные заразные выжившие изолированы?",
+      "Хотя бы половина выживших — не инвалиды?",
+      "Хотя бы половина выживших — не хрупкие и без ожирения?",
+      "У большинства нет критически отрицательной человеческой черты?",
+      "Есть хотя бы пара человек с полезной профессией?",
+      "Есть хотя бы пара человек с полезным хобби?",
+      "Есть люди с полезным инвентарём (рюкзак или большой багаж)?",
+      "Есть хотя бы пара человек с полезными доп. сведениями?",
+      "Есть хотя бы одна пара для продолжения рода?",
+      "Проблемы в бункере отсутствуют или полностью решены?"
+    ];
+
+    function openSurvivalTestModal() {
+      state.survivalTest = { step: 0, answers: [], finished: false };
+      renderSurvivalModal();
+    }
+
+    function answerSurvivalQuestion(isYes) {
+      state.survivalTest.answers.push(isYes);
+      if (state.survivalTest.step + 1 < SURVIVAL_QUESTIONS.length) {
+        state.survivalTest.step += 1;
+      } else {
+        state.survivalTest.finished = true;
+      }
+      renderSurvivalModal();
+    }
+
+    function renderSurvivalModal() {
+      const st = state.survivalTest;
+      if (!st.finished) {
+        const q = SURVIVAL_QUESTIONS[st.step];
+        openModal(`
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-base font-bold text-white flex items-center gap-2">
+              <i data-lucide="clipboard-check" class="w-5 h-5 text-amber-400"></i>
+              Оценка выживаемости (${st.step + 1}/${SURVIVAL_QUESTIONS.length})
+            </h3>
+            <button onclick="closeModal()" class="text-bunker-muted hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+          </div>
+          <div class="w-full bg-bunker-bg h-1.5 rounded-full mb-5 overflow-hidden">
+            <div class="bg-amber-500 h-full transition-all" style="width: ${Math.round(((st.step + 1) / SURVIVAL_QUESTIONS.length) * 100)}%"></div>
+          </div>
+          <p class="text-base font-semibold text-white mb-6 leading-relaxed">${q}</p>
+          <div class="grid grid-cols-2 gap-3">
+            <button onclick="answerSurvivalQuestion(true)" class="py-3.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-sm transition">Да</button>
+            <button onclick="answerSurvivalQuestion(false)" class="py-3.5 rounded-xl bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 text-red-300 font-bold text-sm transition">Нет</button>
+          </div>
+        `);
+      } else {
+        const yesCount = st.answers.filter(Boolean).length;
+        const pct = Math.round((yesCount / SURVIVAL_QUESTIONS.length) * 100);
+        let verdict = "Бункер обречён... Но было весело!";
+        let color = "text-red-400";
+        if (pct >= 75) { verdict = "Поздравляем! Всем жителям удалось выжить, и именно ваша база станет началом новой цивилизации в будущем!"; color = "text-emerald-400"; }
+        else if (pct >= 50) { verdict = "Выжили на тоненького — придётся сильно постараться!"; color = "text-amber-400"; }
+
+        openModal(`
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-bold text-white">Итог оценки бункера</h3>
+            <button onclick="closeModal()" class="text-bunker-muted hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+          </div>
+          <div class="text-center py-4">
+            <div class="text-5xl font-mono font-extrabold ${color} mb-2">${pct}%</div>
+            <div class="text-base font-bold text-white mb-2">${verdict}</div>
+            <p class="text-xs text-bunker-muted">Положительных ответов: ${yesCount} из ${SURVIVAL_QUESTIONS.length}</p>
+          </div>
+          <button onclick="closeModal()" class="mt-4 w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold text-sm">Закрыть</button>
+        `);
+      }
+    }
+
+    function renderGameOver() {
+      const room = state.room;
+      const participants = getPlayingParticipants(room);
+      const survivors = participants.filter(p => !p.exiled);
+      const exiled = participants.filter(p => p.exiled);
+
+      return `
+        <div class="py-4 space-y-6">
+          <div class="hazard-stripe border border-emerald-500/40 rounded-2xl p-6 text-center">
+            <i data-lucide="shield-check" class="w-12 h-12 text-emerald-400 mx-auto mb-3"></i>
+            <h1 class="text-2xl sm:text-3xl font-extrabold text-white mb-2">Двери бункера закрыты!</h1>
+            <p class="text-sm text-gray-300">Катастрофа «${room.catastrophe.title}» пережита. В бункер (${room.bunker.area}) прошли ${survivors.length} чел.</p>
+          </div>
+          <div>
+            <h2 class="text-sm font-bold uppercase tracking-wider text-emerald-400 mb-3">Попали в бункер (${survivors.length})</h2>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">${survivors.map(p => renderFinalCard(p, true)).join("")}</div>
+          </div>
+          ${exiled.length > 0 ? `
+            <div>
+              <h2 class="text-sm font-bold uppercase tracking-wider text-red-400 mb-3">Остались снаружи (${exiled.length})</h2>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5 opacity-75">${exiled.map(p => renderFinalCard(p, false)).join("")}</div>
+            </div>
+          ` : ''}
+          <div class="flex flex-col sm:flex-row gap-3">
+            <button onclick="openSurvivalTestModal()" class="flex-1 py-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold flex items-center justify-center gap-2 transition">
+              <i data-lucide="clipboard-check" class="w-5 h-5"></i>
+              Оценка выживаемости бункера
+            </button>
+            ${room.hostId === CLIENT_ID ? `<button onclick="startGame()" class="py-4 px-6 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold transition">Сыграть ещё раз</button>` : ''}
+            <button onclick="leaveToHome()" class="py-4 px-6 rounded-xl bg-bunker-surface border border-bunker-border text-white font-semibold">В главное меню</button>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderFinalCard(p, survived) {
+      return `
+        <div class="rounded-2xl p-4 border ${survived ? 'bg-bunker-surface border-emerald-500/40' : 'bg-bunker-surface border-red-500/30'}">
+          <div class="font-bold text-base text-white mb-2 flex items-center justify-between">
+            <span>${p.name}</span>
+            <span class="text-xs font-mono ${survived ? 'text-emerald-400' : 'text-red-400'}">${survived ? 'ВЫЖИЛ' : 'ИЗГНАН'}</span>
+          </div>
+          <div class="space-y-1 text-xs">
+            ${getActiveTraitMeta(state.room).map(m => `
+              <div class="flex justify-between gap-2 border-b border-bunker-border/40 py-1 last:border-0">
+                <span class="text-bunker-muted">${m.label}:</span>
+                <span class="text-gray-200 text-right">${p.character.traits[m.key]}</span>
+              </div>
+            `).join("")}
+          </div>
+        </div>
+      `;
+    }
+
+    let pollInterval = null;
+    let gameClockInterval = null;
+    let lastAutoEventAt = 0;
+    function startGameClock() {
+      if (gameClockInterval) clearInterval(gameClockInterval);
+      gameClockInterval = setInterval(() => {
+        if (!state.room || !state.room.startedAt || state.room.phase === "gameover" || state.room.phase === "lobby") return;
+        const el = document.getElementById("game-duration-val");
+        if (el) el.textContent = formatElapsed(Date.now() - state.room.startedAt);
+        // Автоматическое случайное событие раз в ~105 секунд во время активной игры (запускает хост)
+        if (state.room.hostId === CLIENT_ID && state.room.phase === "playing") {
+          const now = Date.now();
+          if (!lastAutoEventAt) lastAutoEventAt = state.room.startedAt;
+          if (now - lastAutoEventAt >= 105000) {
+            lastAutoEventAt = now;
+            triggerRandomEvent(true);
+          }
+        }
+      }, 1000);
+    }
+
+    function startRoomPolling() {
+      if (pollInterval) clearInterval(pollInterval);
+      pollInterval = setInterval(async () => {
+        if (!state.room || !supabaseClient) return;
+        const remote = await fetchRoomFromSupabase(state.room.code);
+        if (remote && JSON.stringify(remote) !== JSON.stringify(state.room)) {
+          state.room = remote;
+          if (remote.phase === "playing" || remote.phase === "voting") state.screen = "game";
+          if (remote.phase === "gameover") state.screen = "gameover";
+          render();
+        }
+      }, 3000);
+    }
+
+    window.addEventListener("DOMContentLoaded", async () => {
+      render();
+      await initSupabaseIfConfigured();
+      await loadPacksFromSupabase();
+      startRoomPolling();
+      startGameClock();
+      render();
+    });
+  </script>
+</body>
+</html>
