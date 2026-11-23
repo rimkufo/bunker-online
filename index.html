@@ -317,6 +317,8 @@
     // =========================================================================
     const STORAGE_KEY_ROOMS = "bunker_rooms_v3";
     const STORAGE_KEY_CLIENT = "bunker_client_id";
+    const STORAGE_KEY_ACTIVE_ROOM = "bunker_active_room";
+    const STORAGE_KEY_PLAYER_NAME = "bunker_player_name";
     const STORAGE_KEY_SUPABASE = "bunker_supabase_cfg";
     const STORAGE_KEY_PACKS = "bunker_custom_packs_v1";
 
@@ -513,9 +515,7 @@
         .channel("room_" + code)
         .on("postgres_changes", { event: "*", schema: "public", table: "bunker_rooms", filter: `code=eq.${code}` }, (payload) => {
           if (payload.new && payload.new.state) {
-            state.room = payload.new.state;
-            if (state.room.phase === "playing" || state.room.phase === "voting") state.screen = "game";
-            if (state.room.phase === "gameover") state.screen = "gameover";
+            applyRestoredRoom(payload.new.state);
             render();
           }
         })
@@ -845,18 +845,6 @@
     // =========================================================================
     // GAME LOGIC & TIMER
     // =========================================================================
-    function generateDefaultGender() {
-      const g = pick(DECKS.genders);
-      const age = Math.floor(18 + Math.random() * 48);
-      const cfChance = (customPack && customPack.childfreeChance != null) ? (customPack.childfreeChance / 100) : 0.20;
-        const cf = Math.random() < cfChance ? " (чайлдфри)" : "";
-      return `${g}, ${age} лет${cf}`;
-    }
-
-    function generateDefaultBody() {
-      return `${pick(BODY_TYPES)}, ${Math.floor(155 + Math.random() * 42)} см`;
-    }
-
     function generateDefaultHealth() {
       const cond = pick(DECKS.healthConditions);
       if (cond.includes("Полностью здоров") || cond.includes("иммунитет") || cond.includes("Глухонемой") || cond.includes("Слепой")) return cond;
@@ -887,9 +875,10 @@
       const useAge = customPack ? (customPack.useAgeRange !== false) : true;
       const ageMin = (customPack && customPack.ageMin != null) ? customPack.ageMin : 18;
       const ageMax = (customPack && customPack.ageMax != null) ? customPack.ageMax : 65;
+      const cfChance = (customPack && customPack.childfreeChance != null) ? (customPack.childfreeChance / 100) : 0.20;
       let genderVal = pickRaw("gender", DECKS.genders);
       if (useAge && genderVal !== "Не указано") {
-        const cf = Math.random() < 0.15 ? " (чайлдфри)" : "";
+        const cf = Math.random() < cfChance ? " (чайлдфри)" : "";
         genderVal = `${genderVal}, ${randInt(ageMin, ageMax)} лет${cf}`;
       }
 
@@ -986,7 +975,7 @@
       const room = {
         code,
         hostId: CLIENT_ID,
-        hostPlays: true, // true = играет с карточкой, false = только ведущий
+        hostPlays: true,
         selectedPackId: "base",
         disabledTraits: [],
         sessionExcluded: {},
@@ -1008,6 +997,10 @@
       state.room = room;
       state.viewingPlayerId = CLIENT_ID;
       state.screen = "lobby";
+      try {
+        sessionStorage.setItem(STORAGE_KEY_ACTIVE_ROOM, room.code);
+        sessionStorage.setItem(STORAGE_KEY_PLAYER_NAME, state.playerName);
+      } catch (e) {}
       saveRoomLocal(room);
       subscribeSupabaseRoom(code);
 
@@ -1067,9 +1060,11 @@
         saveRoomLocal(room);
       }
 
-      state.room = room;
-      state.viewingPlayerId = CLIENT_ID;
-      state.screen = room.phase === "lobby" ? "lobby" : (room.phase === "gameover" ? "gameover" : "game");
+      applyRestoredRoom(room);
+      try {
+        sessionStorage.setItem(STORAGE_KEY_ACTIVE_ROOM, room.code);
+        sessionStorage.setItem(STORAGE_KEY_PLAYER_NAME, state.playerName);
+      } catch (e) {}
       subscribeSupabaseRoom(code);
       render();
     }
@@ -1291,7 +1286,6 @@
       render();
     }
 
-    // Speech Timer Controls (для ведущего)
     function applyRandomEvent(room) {
       const participants = getPlayingParticipants(room).filter(p => !p.exiled && p.character);
       if (room.eventPool && room.eventPool.length === 0) return "";
@@ -2157,7 +2151,7 @@
         target.character.revealed.bigLuggage = true;
         room.log.unshift(`${player.name} обменялся Большим багажом с ${target.name}`);
         showToast(`Обмен Большим багажом с ${target.name}`, "success");
-      } else if (card.actionType === "swap_prof" || card.actionType === "swap_health" || card.actionType === "heal_other" || card.actionType === "infect_other" || card.actionType === "strip_immunity" || card.actionType === "werewolf_bite" || card.actionType === "give_phobia" || card.actionType === "change_health_deg" || card.actionType === "flip_gender" || card.actionType === "make_childfree" || card.actionType === "remove_childfree" || card.actionType === "swap_body") {
+      } else if (card.actionType === "swap_prof") {
         const tmp = player.character.traits.profession;
         player.character.traits.profession = target.character.traits.profession;
         target.character.traits.profession = tmp;
@@ -2184,7 +2178,7 @@
         target.character.revealed.health = true;
         room.log.unshift(`${player.name} заразил(а) ${target.name}: ${newH}!`);
         showToast(`У ${target.name} новая болезнь!`, "warn");
-      } else if (card.actionType === "strip_immunity" || card.actionType === "werewolf_bite" || card.actionType === "give_phobia" || card.actionType === "change_health_deg" || card.actionType === "flip_gender" || card.actionType === "make_childfree" || card.actionType === "remove_childfree" || card.actionType === "swap_body") {
+      } else if (card.actionType === "strip_immunity") {
         target.immunity = false;
         const hidden = TRAIT_META.map(t => t.key).filter(k => !target.character.revealed[k]);
         if (hidden.length > 0) target.character.revealed[pick(hidden)] = true;
@@ -2201,7 +2195,7 @@
         target.character.revealed.phobia = true;
         room.log.unshift(`${player.name} навязал(а) фобию игроку ${target.name}: ${np}!`);
         showToast(`У ${target.name} новая фобия!`, "warn");
-      } else if (card.actionType === "change_health_deg" || card.actionType === "flip_gender" || card.actionType === "make_childfree" || card.actionType === "remove_childfree" || card.actionType === "swap_body") {
+      } else if (card.actionType === "change_health_deg") {
         const h = target.character.traits.health;
         if (!h.includes("Полностью здоров")) {
           const base = h.split("(")[0].trim();
@@ -2212,7 +2206,7 @@
         target.character.revealed.health = true;
         room.log.unshift(`${player.name} изменил(а) здоровье игрока ${target.name}: ${target.character.traits.health}`);
         showToast(`Здоровье ${target.name} изменено!`, "warn");
-      } else if (card.actionType === "flip_gender" || card.actionType === "make_childfree" || card.actionType === "remove_childfree" || card.actionType === "swap_body") {
+      } else if (card.actionType === "flip_gender") {
         const g = target.character.traits.gender;
         const rest = g.includes(",") ? g.slice(g.indexOf(",")) : "";
         const nextG = g.toLowerCase().includes("муж") ? "Женщина" : "Мужчина";
@@ -2227,7 +2221,7 @@
         target.character.revealed.gender = true;
         room.log.unshift(`🚫 ${player.name} сделал(а) ${target.name} чайлдфри!`);
         showToast(`${target.name} теперь чайлдфри!`, "warn");
-      } else if (card.actionType === "remove_childfree" || card.actionType === "swap_body") {
+      } else if (card.actionType === "remove_childfree") {
         target.character.traits.gender = target.character.traits.gender.replace(/\s*\(чайлдфри\)/gi, "").trim();
         target.character.revealed.gender = true;
         room.log.unshift(`👶 ${player.name} снял(а) статус чайлдфри с ${target.name}!`);
@@ -2324,6 +2318,7 @@
       if (timerInterval) clearInterval(timerInterval);
       state.room = null;
       state.screen = "home";
+      try { sessionStorage.removeItem(STORAGE_KEY_ACTIVE_ROOM); } catch (e) {}
       render();
     }
 
@@ -2610,7 +2605,6 @@ alter publication supabase_realtime add table bunker_rooms;`;
             <input id="pk-only-custom" type="checkbox" ${p.onlyCustom ? 'checked' : ''} class="w-5 h-5 rounded bg-bunker-bg border-bunker-border text-red-500 shrink-0 cursor-pointer">
           </div>
 
-          <!-- Диапазоны и модификаторы (как в Bunker Online) -->
           <div class="bg-bunker-surface border border-bunker-border rounded-2xl p-4 sm:p-5 space-y-4">
             <h2 class="text-sm font-bold uppercase tracking-wider text-amber-400">Диапазоны (Возраст, Рост) и модификаторы</h2>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -2787,6 +2781,9 @@ alter publication supabase_realtime add table bunker_rooms;`;
 
     function renderGame() {
       const room = state.room;
+      if (!room || !room.catastrophe || !room.bunker) {
+        return room ? renderLobby() : renderHome();
+      }
       const isHost = room.hostId === CLIENT_ID;
       const participants = getPlayingParticipants(room);
       const aliveCount = participants.filter(p => !p.exiled).length;
@@ -3264,6 +3261,9 @@ alter publication supabase_realtime add table bunker_rooms;`;
 
     function renderGameOver() {
       const room = state.room;
+      if (!room || !room.catastrophe || !room.bunker) {
+        return renderHome();
+      }
       const participants = getPlayingParticipants(room);
       const survivors = participants.filter(p => !p.exiled);
       const exiled = participants.filter(p => p.exiled);
@@ -3325,7 +3325,6 @@ alter publication supabase_realtime add table bunker_rooms;`;
         if (!state.room || !state.room.startedAt || state.room.phase === "gameover" || state.room.phase === "lobby") return;
         const el = document.getElementById("game-duration-val");
         if (el) el.textContent = formatElapsed(Date.now() - state.room.startedAt);
-        // Автоматическое случайное событие раз в ~105 секунд во время активной игры (запускает хост)
         if (state.room.hostId === CLIENT_ID && state.room.phase === "playing") {
           const now = Date.now();
           if (!lastAutoEventAt) lastAutoEventAt = state.room.startedAt;
@@ -3343,21 +3342,50 @@ alter publication supabase_realtime add table bunker_rooms;`;
         if (!state.room || !supabaseClient) return;
         const remote = await fetchRoomFromSupabase(state.room.code);
         if (remote && JSON.stringify(remote) !== JSON.stringify(state.room)) {
-          state.room = remote;
-          if (remote.phase === "playing" || remote.phase === "voting") state.screen = "game";
-          if (remote.phase === "gameover") state.screen = "gameover";
+          applyRestoredRoom(remote);
           render();
         }
       }, 3000);
     }
 
+    function applyRestoredRoom(room) {
+      if (!room || !room.players || !room.players.find(p => p.id === CLIENT_ID)) return false;
+      state.room = room;
+      state.viewingPlayerId = CLIENT_ID;
+      if ((room.phase === "playing" || room.phase === "voting") && room.catastrophe && room.bunker) {
+        state.screen = "game";
+      } else if (room.phase === "gameover" && room.catastrophe && room.bunker) {
+        state.screen = "gameover";
+      } else {
+        state.screen = "lobby";
+      }
+      return true;
+    }
+
     window.addEventListener("DOMContentLoaded", async () => {
+      let savedCode = "";
+      try {
+        savedCode = sessionStorage.getItem(STORAGE_KEY_ACTIVE_ROOM) || "";
+        state.playerName = sessionStorage.getItem(STORAGE_KEY_PLAYER_NAME) || "";
+      } catch (e) {}
+
+      if (savedCode) {
+        const localRoom = loadRoomLocal(savedCode);
+        if (localRoom) applyRestoredRoom(localRoom);
+      }
       render();
+
       await initSupabaseIfConfigured();
+      if (savedCode && supabaseClient) {
+        const remoteRoom = await fetchRoomFromSupabase(savedCode);
+        if (remoteRoom && applyRestoredRoom(remoteRoom)) {
+          subscribeSupabaseRoom(savedCode);
+          render();
+        }
+      }
       await loadPacksFromSupabase();
       startRoomPolling();
       startGameClock();
-      render();
     });
   </script>
 </body>
