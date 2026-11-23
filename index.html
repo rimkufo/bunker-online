@@ -515,7 +515,9 @@
         .channel("room_" + code)
         .on("postgres_changes", { event: "*", schema: "public", table: "bunker_rooms", filter: `code=eq.${code}` }, (payload) => {
           if (payload.new && payload.new.state) {
-            applyRestoredRoom(payload.new.state);
+            state.room = payload.new.state;
+            if (state.room.phase === "playing" || state.room.phase === "voting") state.screen = "game";
+            if (state.room.phase === "gameover") state.screen = "gameover";
             render();
           }
         })
@@ -845,6 +847,18 @@
     // =========================================================================
     // GAME LOGIC & TIMER
     // =========================================================================
+    function generateDefaultGender() {
+      const g = pick(DECKS.genders);
+      const age = Math.floor(18 + Math.random() * 48);
+      const cfChance = (customPack && customPack.childfreeChance != null) ? (customPack.childfreeChance / 100) : 0.20;
+        const cf = Math.random() < cfChance ? " (чайлдфри)" : "";
+      return `${g}, ${age} лет${cf}`;
+    }
+
+    function generateDefaultBody() {
+      return `${pick(BODY_TYPES)}, ${Math.floor(155 + Math.random() * 42)} см`;
+    }
+
     function generateDefaultHealth() {
       const cond = pick(DECKS.healthConditions);
       if (cond.includes("Полностью здоров") || cond.includes("иммунитет") || cond.includes("Глухонемой") || cond.includes("Слепой")) return cond;
@@ -863,22 +877,21 @@
       const pickRaw = (key, baseArr) => {
         const sessEx = (sessionExcluded && sessionExcluded[key]) ? sessionExcluded[key] : [];
         const customPool = (customPack && customPack.traits && customPack.traits[key]) ? customPack.traits[key].filter(x => !sessEx.includes(x)) : [];
-        if (customPool.length > 0) return pick(customPool);
         if (customPack && (customPack.onlyCustom || (customPack.disableBase && customPack.disableBase[key]))) {
-          return "Не указано";
+          return customPool.length > 0 ? pick(customPool) : "Не указано";
         }
         const excluded = (customPack && customPack.excludedBase && customPack.excludedBase[key]) ? customPack.excludedBase[key] : [];
-        const filtered = baseArr.filter(x => !excluded.includes(x) && !sessEx.includes(x));
-        return filtered.length > 0 ? pick(filtered) : "Не указано";
+        const filteredBase = baseArr.filter(x => !excluded.includes(x) && !sessEx.includes(x));
+        const combined = [...customPool, ...filteredBase];
+        return combined.length > 0 ? pick(combined) : "Не указано";
       };
 
       const useAge = customPack ? (customPack.useAgeRange !== false) : true;
       const ageMin = (customPack && customPack.ageMin != null) ? customPack.ageMin : 18;
       const ageMax = (customPack && customPack.ageMax != null) ? customPack.ageMax : 65;
-      const cfChance = (customPack && customPack.childfreeChance != null) ? (customPack.childfreeChance / 100) : 0.20;
       let genderVal = pickRaw("gender", DECKS.genders);
       if (useAge && genderVal !== "Не указано") {
-        const cf = Math.random() < cfChance ? " (чайлдфри)" : "";
+        const cf = Math.random() < 0.15 ? " (чайлдфри)" : "";
         genderVal = `${genderVal}, ${randInt(ageMin, ageMax)} лет${cf}`;
       }
 
@@ -931,6 +944,7 @@
           fact: pickRaw("fact", DECKS.facts)
         },
         revealed,
+        traitAbilitiesUsed: {},
         profAbilityUsed: false,
         hobbyAbilityUsed: false,
         specials: pickMultiple(DECKS.specialCards, 2).map(s => ({ ...s, used: false }))
@@ -975,7 +989,7 @@
       const room = {
         code,
         hostId: CLIENT_ID,
-        hostPlays: true,
+        hostPlays: true, // true = играет с карточкой, false = только ведущий
         selectedPackId: "base",
         disabledTraits: [],
         sessionExcluded: {},
@@ -997,10 +1011,7 @@
       state.room = room;
       state.viewingPlayerId = CLIENT_ID;
       state.screen = "lobby";
-      try {
-        sessionStorage.setItem(STORAGE_KEY_ACTIVE_ROOM, room.code);
-        sessionStorage.setItem(STORAGE_KEY_PLAYER_NAME, state.playerName);
-      } catch (e) {}
+      try { sessionStorage.setItem(STORAGE_KEY_ACTIVE_ROOM, room.code); sessionStorage.setItem(STORAGE_KEY_PLAYER_NAME, state.playerName); } catch (e) {}
       saveRoomLocal(room);
       subscribeSupabaseRoom(code);
 
@@ -1060,11 +1071,10 @@
         saveRoomLocal(room);
       }
 
-      applyRestoredRoom(room);
-      try {
-        sessionStorage.setItem(STORAGE_KEY_ACTIVE_ROOM, room.code);
-        sessionStorage.setItem(STORAGE_KEY_PLAYER_NAME, state.playerName);
-      } catch (e) {}
+      state.room = room;
+      state.viewingPlayerId = CLIENT_ID;
+      state.screen = room.phase === "lobby" ? "lobby" : (room.phase === "gameover" ? "gameover" : "game");
+      try { sessionStorage.setItem(STORAGE_KEY_ACTIVE_ROOM, room.code); sessionStorage.setItem(STORAGE_KEY_PLAYER_NAME, state.playerName); } catch (e) {}
       subscribeSupabaseRoom(code);
       render();
     }
@@ -1276,7 +1286,7 @@
       room.startedAt = Date.now();
       room.eventPool = (customPack && customPack.onlyCustom)
         ? (customPack.customEvents || [])
-        : ((customPack && customPack.customEvents && customPack.customEvents.length > 0) ? customPack.customEvents : DECKS.events);
+        : ((customPack && customPack.customEvents && customPack.customEvents.length > 0) ? [...customPack.customEvents, ...DECKS.events] : DECKS.events);
       room.timer = { seconds: 60, running: false, speakerId: participants[0].id };
       room.voting = { active: false, votes: {}, lastResult: null };
       room.log.unshift(`Игра началась! Пак: «${room.catastrophe.packName}».`);
@@ -1286,6 +1296,7 @@
       render();
     }
 
+    // Speech Timer Controls (для ведущего)
     function applyRandomEvent(room) {
       const participants = getPlayingParticipants(room).filter(p => !p.exiled && p.character);
       if (room.eventPool && room.eventPool.length === 0) return "";
@@ -1473,7 +1484,33 @@
       render();
     }
 
+    function isTraitAbilityUsed(char, key) {
+      if (char.traitAbilitiesUsed && char.traitAbilitiesUsed[key]) return true;
+      if (key === "profession" && char.profAbilityUsed) return true;
+      if (key === "hobby" && char.hobbyAbilityUsed) return true;
+      return false;
+    }
+
+    function markTraitAbilityUsed(char, key) {
+      if (!char.traitAbilitiesUsed) char.traitAbilitiesUsed = {};
+      char.traitAbilitiesUsed[key] = true;
+      if (key === "profession") char.profAbilityUsed = true;
+      if (key === "hobby") char.hobbyAbilityUsed = true;
+    }
+
+    function displayTraitText(val) {
+      if (!val) return "";
+      const idx = val.indexOf("|");
+      return idx >= 0 ? val.slice(0, idx).trim() : val;
+    }
+
     function getTraitAbility(type, val) {
+      if (val && val.includes("|")) {
+        const rawAb = val.split("|").slice(1).join("|").replace(/\([^)]*\)\s*$/, "").trim();
+        if (rawAb) {
+          return { title: rawAb.slice(0, 28), desc: rawAb, action: "custom_trait_ab", customText: rawAb };
+        }
+      }
       const v = (val || "").toLowerCase();
       if (type === "profession") {
         if (v.includes("кукловод")) return { title: "Нити кукловода", desc: "Выберите игрока — он станет вашим заклятым врагом (в бункер пройдёт только один).", action: "rival" };
@@ -1487,7 +1524,7 @@
         if (v.includes("ортопед")) return { title: "Ортопедия", desc: "Снижает степень болезни выбранного игрока до «Легкая».", action: "soften_health" };
         if (v.includes("пожарный")) return { title: "Экипировка", desc: "Добавляет вам в Большой багаж «Защитный костюм».", action: "add_suit" };
         if (v.includes("парамедик")) return { title: "Реанимация", desc: "Возвращает изгнанного игрока обратно в игру!", action: "revive_exiled" };
-        if (v.includes("доярка")) return { title: "Ферма", desc: "Добавляет вам в Большой багаж живую «Корову».", action: "add_cow" };
+        if (v.includes("доярка") || v.includes("фермер")) return { title: "Ферма (Корова)", desc: "Добавляет вам в Большой багаж живую «Корову».", action: "add_cow" };
         if (v.includes("спортсмен")) return { title: "Прокачка", desc: "Меняет ваше телосложение на «Атлетическое».", action: "make_athletic" };
       }
       if (type === "hobby") {
@@ -1498,19 +1535,38 @@
       return null;
     }
 
+    function applyCustomTraitAddItem(playerId, type) {
+      const room = state.room;
+      const player = room.players.find(p => p.id === playerId);
+      const slot = document.getElementById("cta-slot").value;
+      const item = document.getElementById("cta-item").value.trim();
+      if (!item || !player) { showToast("Введите предмет", "warn"); return; }
+
+      player.character.traits[slot] = `${player.character.traits[slot]} + ${item}`;
+      player.character.revealed[slot] = true;
+      markTraitAbilityUsed(player.character, type);
+      player.character.revealed[type] = true;
+      const msg = `⚡ ${player.name} (${displayTraitText(player.character.traits[type])}) добавил(а) себе: ${item}!`;
+      room.log.unshift(msg);
+      room.activeEvent = msg;
+      closeModal();
+      saveRoomLocal(room);
+      showToast(`Добавлено: ${item}!`, "success");
+      render();
+    }
+
     function useTraitAbility(playerId, type) {
       const room = state.room;
       const player = room.players.find(p => p.id === playerId);
       if (!player || player.exiled || !player.character) return;
-      const usedKey = type === "profession" ? "profAbilityUsed" : "hobbyAbilityUsed";
-      if (player.character[usedKey]) return;
+      if (isTraitAbilityUsed(player.character, type)) return;
 
       const ab = getTraitAbility(type, player.character.traits[type]);
       if (!ab) return;
 
       if (ab.action === "self_double_vote") {
         player.doubleVote = true;
-        player.character[usedKey] = true;
+        markTraitAbilityUsed(player.character, type);
         player.character.revealed[type] = true;
         const msg = `📜 ${player.name} (${ab.title}) заверил себе двойной голос на следующее голосование!`;
         room.log.unshift(msg);
@@ -1523,7 +1579,7 @@
       if (ab.action === "add_cow") {
         player.character.traits.bigLuggage = `${player.character.traits.bigLuggage} + Живая корова`;
         player.character.revealed.bigLuggage = true;
-        player.character[usedKey] = true;
+        markTraitAbilityUsed(player.character, type);
         player.character.revealed[type] = true;
         const msg = `🐄 ${player.name} (${ab.title}) привёл в бункер живую корову!`;
         room.log.unshift(msg);
@@ -1537,7 +1593,7 @@
         const hPart = player.character.traits.body.includes(",") ? player.character.traits.body.slice(player.character.traits.body.indexOf(",")) : "";
         player.character.traits.body = `Атлетическое${hPart}`;
         player.character.revealed.body = true;
-        player.character[usedKey] = true;
+        markTraitAbilityUsed(player.character, type);
         player.character.revealed[type] = true;
         const msg = `💪 ${player.name} (${ab.title}) стал Атлетического телосложения!`;
         room.log.unshift(msg);
@@ -1573,13 +1629,48 @@
       if (ab.action === "add_suit") {
         player.character.traits.bigLuggage = `${player.character.traits.bigLuggage} + Защитный костюм`;
         player.character.revealed.bigLuggage = true;
-        player.character[usedKey] = true;
+        markTraitAbilityUsed(player.character, type);
         player.character.revealed[type] = true;
         const msg = `🚒 ${player.name} (${ab.title}) добавил себе в Большой багаж «Защитный костюм»!`;
         room.log.unshift(msg);
         room.activeEvent = msg;
         saveRoomLocal(room);
         showToast("Защитный костюм добавлен!", "success");
+        render();
+        return;
+      }
+
+      if (ab.action === "custom_trait_ab") {
+        const lower = ab.customText.toLowerCase();
+        const isAddItem = lower.includes("добав") || lower.includes("коров") || lower.includes("багаж") || lower.includes("рюкзак") || lower.includes("инвентар") || lower.includes("предмет");
+        if (isAddItem) {
+          const defaultSlot = lower.includes("рюкзак") ? "backpack" : "bigLuggage";
+          const suggested = ab.customText.replace(/добавить( в (большой )?багаж| в рюкзак| в инвентарь| себе)?/gi, "").replace(/[:—-]/g, "").trim();
+          openModal(`
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="text-lg font-bold text-white">⚡ ${ab.title}</h3>
+              <button onclick="closeModal()" class="text-bunker-muted hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+            <p class="text-xs text-bunker-muted mb-3">${ab.desc}</p>
+            <div class="space-y-3 mb-4">
+              <select id="cta-slot" class="w-full px-3 py-2.5 rounded-xl bg-bunker-bg border border-bunker-border text-sm text-white">
+                <option value="bigLuggage" ${defaultSlot === 'bigLuggage' ? 'selected' : ''}>Большой багаж</option>
+                <option value="backpack" ${defaultSlot === 'backpack' ? 'selected' : ''}>Рюкзак</option>
+              </select>
+              <input id="cta-item" type="text" value="${suggested}" placeholder="Что добавить?" class="w-full px-3 py-2.5 rounded-xl bg-bunker-bg border border-bunker-border text-sm text-white">
+            </div>
+            <button onclick="applyCustomTraitAddItem('${playerId}', '${type}')" class="w-full py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-sm">Добавить себе</button>
+          `);
+          return;
+        }
+        // Otherwise apply as instant announcement/action
+        markTraitAbilityUsed(player.character, type);
+        player.character.revealed[type] = true;
+        const msg = `⚡ ${player.name} (${displayTraitText(player.character.traits[type])}) применил(а) способность: ${ab.customText}`;
+        room.log.unshift(msg);
+        room.activeEvent = msg;
+        saveRoomLocal(room);
+        showToast("Способность применена!", "success");
         render();
         return;
       }
@@ -1614,7 +1705,6 @@
       if (!player || !target) return;
 
       const ab = getTraitAbility(type, player.character.traits[type]);
-      const usedKey = type === "profession" ? "profAbilityUsed" : "hobbyAbilityUsed";
       closeModal();
 
       if (ab.action === "rival") {
@@ -1678,7 +1768,7 @@
       }
 
       room.activeEvent = room.log[0];
-      player.character[usedKey] = true;
+      markTraitAbilityUsed(player.character, type);
       player.character.revealed[type] = true;
       saveRoomLocal(room);
       render();
@@ -2151,7 +2241,7 @@
         target.character.revealed.bigLuggage = true;
         room.log.unshift(`${player.name} обменялся Большим багажом с ${target.name}`);
         showToast(`Обмен Большим багажом с ${target.name}`, "success");
-      } else if (card.actionType === "swap_prof") {
+      } else if (card.actionType === "swap_prof" || card.actionType === "swap_health" || card.actionType === "heal_other" || card.actionType === "infect_other" || card.actionType === "strip_immunity" || card.actionType === "werewolf_bite" || card.actionType === "give_phobia" || card.actionType === "change_health_deg" || card.actionType === "flip_gender" || card.actionType === "make_childfree" || card.actionType === "remove_childfree" || card.actionType === "swap_body") {
         const tmp = player.character.traits.profession;
         player.character.traits.profession = target.character.traits.profession;
         target.character.traits.profession = tmp;
@@ -2178,7 +2268,7 @@
         target.character.revealed.health = true;
         room.log.unshift(`${player.name} заразил(а) ${target.name}: ${newH}!`);
         showToast(`У ${target.name} новая болезнь!`, "warn");
-      } else if (card.actionType === "strip_immunity") {
+      } else if (card.actionType === "strip_immunity" || card.actionType === "werewolf_bite" || card.actionType === "give_phobia" || card.actionType === "change_health_deg" || card.actionType === "flip_gender" || card.actionType === "make_childfree" || card.actionType === "remove_childfree" || card.actionType === "swap_body") {
         target.immunity = false;
         const hidden = TRAIT_META.map(t => t.key).filter(k => !target.character.revealed[k]);
         if (hidden.length > 0) target.character.revealed[pick(hidden)] = true;
@@ -2195,7 +2285,7 @@
         target.character.revealed.phobia = true;
         room.log.unshift(`${player.name} навязал(а) фобию игроку ${target.name}: ${np}!`);
         showToast(`У ${target.name} новая фобия!`, "warn");
-      } else if (card.actionType === "change_health_deg") {
+      } else if (card.actionType === "change_health_deg" || card.actionType === "flip_gender" || card.actionType === "make_childfree" || card.actionType === "remove_childfree" || card.actionType === "swap_body") {
         const h = target.character.traits.health;
         if (!h.includes("Полностью здоров")) {
           const base = h.split("(")[0].trim();
@@ -2206,7 +2296,7 @@
         target.character.revealed.health = true;
         room.log.unshift(`${player.name} изменил(а) здоровье игрока ${target.name}: ${target.character.traits.health}`);
         showToast(`Здоровье ${target.name} изменено!`, "warn");
-      } else if (card.actionType === "flip_gender") {
+      } else if (card.actionType === "flip_gender" || card.actionType === "make_childfree" || card.actionType === "remove_childfree" || card.actionType === "swap_body") {
         const g = target.character.traits.gender;
         const rest = g.includes(",") ? g.slice(g.indexOf(",")) : "";
         const nextG = g.toLowerCase().includes("муж") ? "Женщина" : "Мужчина";
@@ -2221,7 +2311,7 @@
         target.character.revealed.gender = true;
         room.log.unshift(`🚫 ${player.name} сделал(а) ${target.name} чайлдфри!`);
         showToast(`${target.name} теперь чайлдфри!`, "warn");
-      } else if (card.actionType === "remove_childfree") {
+      } else if (card.actionType === "remove_childfree" || card.actionType === "swap_body") {
         target.character.traits.gender = target.character.traits.gender.replace(/\s*\(чайлдфри\)/gi, "").trim();
         target.character.revealed.gender = true;
         room.log.unshift(`👶 ${player.name} снял(а) статус чайлдфри с ${target.name}!`);
@@ -2558,7 +2648,7 @@ alter publication supabase_realtime add table bunker_rooms;`;
                 </label>
               </div>
             </div>
-            <textarea id="pk-trait-${m.key}" rows="4" placeholder="По одному варианту на строку"
+            <textarea id="pk-trait-${m.key}" rows="4" placeholder="1 на строку. Можно со способностью через | (напр.: Предмет | Добавить себе...)"
               class="w-full px-3 py-2 rounded-lg bg-bunker-bg border border-bunker-border text-xs text-white placeholder-gray-600 focus:outline-none focus:border-amber-500">${lines}</textarea>
           </div>
         `;
@@ -2605,6 +2695,7 @@ alter publication supabase_realtime add table bunker_rooms;`;
             <input id="pk-only-custom" type="checkbox" ${p.onlyCustom ? 'checked' : ''} class="w-5 h-5 rounded bg-bunker-bg border-bunker-border text-red-500 shrink-0 cursor-pointer">
           </div>
 
+          <!-- Диапазоны и модификаторы (как в Bunker Online) -->
           <div class="bg-bunker-surface border border-bunker-border rounded-2xl p-4 sm:p-5 space-y-4">
             <h2 class="text-sm font-bold uppercase tracking-wider text-amber-400">Диапазоны (Возраст, Рост) и модификаторы</h2>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -2781,9 +2872,6 @@ alter publication supabase_realtime add table bunker_rooms;`;
 
     function renderGame() {
       const room = state.room;
-      if (!room || !room.catastrophe || !room.bunker) {
-        return room ? renderLobby() : renderHome();
-      }
       const isHost = room.hostId === CLIENT_ID;
       const participants = getPlayingParticipants(room);
       const aliveCount = participants.filter(p => !p.exiled).length;
@@ -2953,10 +3041,10 @@ alter publication supabase_realtime add table bunker_rooms;`;
                           <td class="py-3.5 px-3 border-r border-bunker-border/40 last:border-r-0 align-middle">
                             ${isRev
                               ? (() => {
-                                  const ab = (m.key === "profession" || m.key === "hobby") ? getTraitAbility(m.key, char.traits[m.key]) : null;
-                                  const used = m.key === "profession" ? char.profAbilityUsed : char.hobbyAbilityUsed;
+                                  const ab = getTraitAbility(m.key, char.traits[m.key]);
+                                  const used = isTraitAbilityUsed(char, m.key);
                                   const badge = ab ? `<span class="mt-1 inline-block px-1.5 py-0.5 rounded text-[10px] font-mono ${used ? 'bg-bunker-card text-bunker-muted' : 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'}">${used ? '✓ ' + ab.title : '⚡ ' + ab.title}</span>` : '';
-                                  return `<span class="text-gray-100 font-medium leading-snug block">${char.traits[m.key]}</span>${badge}`;
+                                  return `<span class="text-gray-100 font-medium leading-snug block">${displayTraitText(char.traits[m.key])}</span>${badge}`;
                                 })()
                               : `<span class="text-transparent select-none">—</span>`
                             }
@@ -3007,12 +3095,11 @@ alter publication supabase_realtime add table bunker_rooms;`;
                     ${revealedTraits.map(m => `
                       <div class="bg-bunker-surface/80 rounded-lg px-2.5 py-1.5 border border-bunker-border/40">
                         <div class="text-[10px] text-bunker-muted">${m.label}</div>
-                        <div class="text-xs text-gray-100 font-medium leading-tight mt-0.5">${char.traits[m.key]}</div>
+                        <div class="text-xs text-gray-100 font-medium leading-tight mt-0.5">${displayTraitText(char.traits[m.key])}</div>
                         ${(() => {
-                          if (m.key !== "profession" && m.key !== "hobby") return "";
                           const ab = getTraitAbility(m.key, char.traits[m.key]);
                           if (!ab) return "";
-                          const used = m.key === "profession" ? char.profAbilityUsed : char.hobbyAbilityUsed;
+                          const used = isTraitAbilityUsed(char, m.key);
                           return `<span class="mt-1 inline-block px-1.5 py-0.5 rounded text-[9px] font-mono ${used ? 'bg-bunker-card text-bunker-muted' : 'bg-emerald-500/15 text-emerald-300'}">${used ? '✓ ' + ab.title : '⚡ ' + ab.title}</span>`;
                         })()}
                       </div>
@@ -3080,14 +3167,13 @@ alter publication supabase_realtime add table bunker_rooms;`;
               <div class="p-2 rounded-lg bg-bunker-bg border border-bunker-border text-amber-400 shrink-0 mt-0.5"><i data-lucide="${meta.icon}" class="w-4 h-4"></i></div>
               <div>
                 <div class="text-[11px] uppercase tracking-wider font-semibold text-bunker-muted">${meta.label} ${isRev ? '<span class="text-emerald-400">• Открыто</span>' : '<span class="text-gray-500">• Скрыто</span>'}</div>
-                <div class="text-sm font-semibold text-white mt-0.5">${val}</div>
+                <div class="text-sm font-semibold text-white mt-0.5">${displayTraitText(val)}</div>
               </div>
             </div>
             <div class="flex flex-wrap items-center gap-1.5 shrink-0">
               ${(() => {
-                if (meta.key !== "profession" && meta.key !== "hobby") return "";
                 const ab = getTraitAbility(meta.key, val);
-                const used = meta.key === "profession" ? char.profAbilityUsed : char.hobbyAbilityUsed;
+                const used = isTraitAbilityUsed(char, meta.key);
                 if (!ab) return "";
                 if (used) return '<span class="px-2.5 py-1 rounded-lg bg-bunker-bg border border-bunker-border text-bunker-muted text-[11px] font-mono">Навык исп.</span>';
                 return `<button onclick="useTraitAbility('${player.id}', '${meta.key}')" class="px-3 py-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500 hover:text-black border border-emerald-500/40 text-emerald-300 text-xs font-bold transition" title="${ab.desc}">⚡ ${ab.title}</button>`;
@@ -3261,9 +3347,6 @@ alter publication supabase_realtime add table bunker_rooms;`;
 
     function renderGameOver() {
       const room = state.room;
-      if (!room || !room.catastrophe || !room.bunker) {
-        return renderHome();
-      }
       const participants = getPlayingParticipants(room);
       const survivors = participants.filter(p => !p.exiled);
       const exiled = participants.filter(p => p.exiled);
@@ -3325,6 +3408,7 @@ alter publication supabase_realtime add table bunker_rooms;`;
         if (!state.room || !state.room.startedAt || state.room.phase === "gameover" || state.room.phase === "lobby") return;
         const el = document.getElementById("game-duration-val");
         if (el) el.textContent = formatElapsed(Date.now() - state.room.startedAt);
+        // Автоматическое случайное событие раз в ~105 секунд во время активной игры (запускает хост)
         if (state.room.hostId === CLIENT_ID && state.room.phase === "playing") {
           const now = Date.now();
           if (!lastAutoEventAt) lastAutoEventAt = state.room.startedAt;
@@ -3342,7 +3426,9 @@ alter publication supabase_realtime add table bunker_rooms;`;
         if (!state.room || !supabaseClient) return;
         const remote = await fetchRoomFromSupabase(state.room.code);
         if (remote && JSON.stringify(remote) !== JSON.stringify(state.room)) {
-          applyRestoredRoom(remote);
+          state.room = remote;
+          if (remote.phase === "playing" || remote.phase === "voting") state.screen = "game";
+          if (remote.phase === "gameover") state.screen = "gameover";
           render();
         }
       }, 3000);
@@ -3352,13 +3438,7 @@ alter publication supabase_realtime add table bunker_rooms;`;
       if (!room || !room.players || !room.players.find(p => p.id === CLIENT_ID)) return false;
       state.room = room;
       state.viewingPlayerId = CLIENT_ID;
-      if ((room.phase === "playing" || room.phase === "voting") && room.catastrophe && room.bunker) {
-        state.screen = "game";
-      } else if (room.phase === "gameover" && room.catastrophe && room.bunker) {
-        state.screen = "gameover";
-      } else {
-        state.screen = "lobby";
-      }
+      state.screen = room.phase === "lobby" ? "lobby" : (room.phase === "gameover" ? "gameover" : "game");
       return true;
     }
 
